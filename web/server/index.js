@@ -4,7 +4,7 @@ const path = require("path");
 const A = require("./auth");
 const H = require("./http");
 const { UPLOADS } = require("./users");
-for (const m of ["trips", "matching", "bookings", "social", "messages", "safety", "admin"]) {
+for (const m of ["trips", "matching", "bookings", "messages", "safety", "admin", "radar"]) {
   try { require("./" + m); } catch (e) { if (e.code !== "MODULE_NOT_FOUND" || !String(e.message).includes(`'./${m}'`)) throw e; }
 }
 

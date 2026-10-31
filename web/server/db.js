@@ -189,6 +189,11 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, read_at);
 
+CREATE TABLE IF NOT EXISTS radar_alerts (
+  sig        TEXT PRIMARY KEY,
+  created_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS reports (
   id          INTEGER PRIMARY KEY,
   reporter_id INTEGER NOT NULL REFERENCES users(id),
