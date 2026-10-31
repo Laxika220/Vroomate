@@ -1,0 +1,66 @@
+"use strict";
+// Boots the real server on a random port with a throwaway database and gives tests a cookie-aware client.
+const os = require("os");
+const path = require("path");
+const fs = require("fs");
+
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vroomate-test-"));
+process.env.VROOMATE_DB = path.join(dir, "test.db");
+process.env.VROOMATE_UPLOADS = path.join(dir, "uploads");
+process.env.NODE_ENV = "test";
+
+const { server } = require("../server/index.js");
+const { db } = require("../server/db");
+
+let base;
+async function start() {
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  base = `http://127.0.0.1:${server.address().port}`;
+  return base;
+}
+function stop() { server.close(); server.closeAllConnections && server.closeAllConnections(); }
+
+class Client {
+  constructor() { this.cookie = ""; this.user = null; }
+  async call(method, url, body) {
+    const res = await fetch(base + url, { method, headers: { "Content-Type": "application/json", ...(this.cookie ? { Cookie: this.cookie } : {}) }, body: method === "GET" ? undefined : JSON.stringify(body || {}) });
+    const sc = res.headers.get("set-cookie"); if (sc) this.cookie = sc.split(";")[0];
+    let data = {}; try { data = await res.json(); } catch { /* empty */ }
+    return { status: res.status, data };
+  }
+  async ok(method, url, body) {
+    const r = await this.call(method, url, body);
+    if (r.status >= 300) throw new Error(`${method} ${url} -> ${r.status} ${JSON.stringify(r.data)}`);
+    return r.data;
+  }
+  get(u) { return this.ok("GET", u); }
+  post(u, b) { return this.ok("POST", u, b); }
+}
+
+let n = 0;
+/** Create a verified account of the given role. */
+async function account(role, extra = {}) {
+  n++;
+  const c = new Client();
+  const college = role === "student" || role === "faculty";
+  const email = `${role}${n}@${college ? "mba.christuniversity.in" : "example.com"}`;
+  const r = await c.post("/api/auth/signup", { email, password: "password123", name: extra.name || `${role[0].toUpperCase() + role.slice(1)} ${n}`, role, gender: extra.gender || "x" });
+  if (r.needs_verification) await c.post("/api/auth/verify", { code: r.dev_code });
+  c.user = (await c.get("/api/me")).user;
+  if (extra.home_stop || extra.interests) await c.ok("PUT", "/api/me", { ...c.user, home_stop: extra.home_stop || null, interests: extra.interests || [] });
+  return c;
+}
+const makeAdmin = (c) => db.prepare("UPDATE users SET is_admin=1 WHERE id=?").run(c.user.id);
+
+/** A fully approved driver with one approved vehicle. */
+async function approvedDriver(admin, extra = {}) {
+  const d = await account("driver", extra);
+  await d.post("/api/driver", { licence_no: "MH1420190001234" });
+  await admin.post(`/api/admin/drivers/${d.user.id}`, { decision: "approve" });
+  const v = await d.post("/api/vehicles", { kind: "car", model: "Maruti Swift", colour: "White", plate: `MH12AB${String(1000 + n).slice(-4)}`, seats: extra.seats || 4 });
+  await admin.post(`/api/admin/vehicles/${v.id}`, { decision: "approve" });
+  d.vehicleId = v.id;
+  return d;
+}
+const inHours = (h) => Date.now() + h * 3600000;
+module.exports = { start, stop, Client, account, makeAdmin, approvedDriver, inHours, db };

@@ -23,7 +23,7 @@ function isBlocked(a, b) {
 
 /** Fields safe to show other people. Never email, phone or password. */
 function publicUser(u) {
-  const drv = u.role === "driver" ? db.prepare("SELECT status FROM drivers WHERE user_id=?").get(u.id) : null;
+  const drv = db.prepare("SELECT status FROM drivers WHERE user_id=?").get(u.id);
   return {
     id: u.id, name: u.name, role: u.role, gender: u.gender, bio: u.bio, course: u.course,
     interests: JSON.parse(u.interests || "[]"), home_stop: u.home_stop,

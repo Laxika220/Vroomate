@@ -132,6 +132,12 @@ CREATE TABLE IF NOT EXISTS bookings (
 CREATE INDEX IF NOT EXISTS idx_book_trip ON bookings(trip_id, status);
 CREATE INDEX IF NOT EXISTS idx_book_rider ON bookings(rider_id, status);
 
+CREATE TABLE IF NOT EXISTS trip_passes (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, trip_id)
+);
+
 CREATE TABLE IF NOT EXISTS swipes (
   swiper_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   target_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

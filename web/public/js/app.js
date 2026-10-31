@@ -3,7 +3,7 @@ import { get } from "./api.js";
 import { state, views, nav, refreshMe } from "./core.js";
 import "./views/auth.js";
 import "./views/profile.js";
-const optional = ["discover", "matches", "post", "rides", "chat", "admin", "radar"];
+const optional = ["post", "drive", "admin", "discover", "matches", "rides", "chat", "radar", "notifications"];
 for (const v of optional) { try { await import(`./views/${v}.js`); } catch (e) { if (!/Failed to fetch|Cannot find|error loading|404/i.test(String(e.message))) console.error(v, e); } }
 
 const root = document.getElementById("app");
