@@ -1,4 +1,15 @@
 // Small DOM + UI helpers. All text goes through textContent, never innerHTML, so user input cannot inject markup.
+/** Append children, skipping null/undefined/false (the native append() would print them as text). */
+export function mount(el, ...kids) {
+  const add = (c) => {
+    if (c == null || c === false) return;
+    if (Array.isArray(c)) return c.forEach(add);
+    el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  };
+  kids.forEach(add);
+  return el;
+}
+
 export function h(tag, props, ...kids) {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(props || {})) {
@@ -10,13 +21,7 @@ export function h(tag, props, ...kids) {
     else if (v === true) el.setAttribute(k, "");
     else el.setAttribute(k, v);
   }
-  const add = (c) => {
-    if (c == null || c === false) return;
-    if (Array.isArray(c)) return c.forEach(add);
-    el.append(c instanceof Node ? c : document.createTextNode(String(c)));
-  };
-  kids.forEach(add);
-  return el;
+  return mount(el, ...kids);
 }
 
 const ICONS = {

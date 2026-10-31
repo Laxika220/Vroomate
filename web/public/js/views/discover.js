@@ -1,4 +1,4 @@
-import { h, icon, toast, sheet, avatar, fmtWhen, fmtTime, inr, empty, skeletons } from "../ui.js";
+import { h, icon, toast, sheet, avatar, fmtWhen, fmtTime, inr, empty, skeletons, mount } from "../ui.js";
 import { get, post } from "../api.js";
 import { state, registerView, nav, stopName, legKm } from "../core.js";
 
@@ -51,18 +51,17 @@ registerView("discover", async () => {
   const need = state.need = loadNeed();
   const root = h("div", { class: "stack", style: { gap: "14px" } });
   const mode = () => state.need.mode;
-  const top = h("div", { class: "topbar" },
-    h("h1", { style: { fontSize: "28px" } }, "Discover"),
-    h("a", { class: "iconbtn", href: "#/notifications", "aria-label": "Notifications" }, icon("bell"), state.me.unread_notifications > 0 && h("span", { class: "dot" }, state.me.unread_notifications)));
-  const seg = h("div", { class: "seg2", role: "group", "aria-label": "Discover mode" });
+  const seg = h("div", { class: "seg2 grow", role: "group", "aria-label": "Discover mode" });
+  const top = h("div", { class: "row" }, seg,
+    h("a", { class: "iconbtn", href: "#/notifications", "aria-label": "Notifications", style: { width: "50px", height: "50px", flex: "none" } }, icon("bell"), state.me.unread_notifications > 0 && h("span", { class: "dot" }, state.me.unread_notifications)));
   const needBtn = h("button", { class: "needbar", onclick: () => editNeed(() => load()) });
   const deck = h("div", { class: "stack", style: { gap: "14px" } });
-  root.append(top, seg, needBtn, deck);
+  mount(root, top, needBtn, deck);
 
   const drawChrome = () => {
     seg.replaceChildren(...[["rides", "Find a Ride"], ["buddies", "Travel Buddies"]].map(([id, l]) => h("button", { "aria-pressed": String(mode() === id), onclick: () => { state.need.mode = id; saveNeed(state.need); drawChrome(); load(); } }, l)));
     const n = state.need;
-    needBtn.replaceChildren(icon("route"), h("span", { class: "grow" }, h("b", { style: { display: "block" } }, `${stopName(n.pickup)} to ${stopName(n.drop)}`), h("span", { class: "hint" }, `${WINDOWS.find((w) => w[0] === n.win)[1]} · ${n.seats} seat${n.seats > 1 ? "s" : ""} · tap to change`)));
+    needBtn.replaceChildren(icon("route"), h("span", { class: "grow" }, h("b", { style: { display: "block", lineHeight: 1.2 } }, `${stopName(n.pickup)} to ${stopName(n.drop)}`), h("span", { class: "hint" }, `${WINDOWS.find((w) => w[0] === n.win)[1]} · ${n.seats} seat${n.seats > 1 ? "s" : ""}`)), h("span", { class: "hint" }, "Edit"));
   };
   let token = 0;
   async function load() {
@@ -87,7 +86,7 @@ registerView("discover", async () => {
     const actions = h("div", { class: "swipe-actions" },
       h("button", { class: "round no", "aria-label": "Pass", onclick: () => fling("no") }, icon("x")),
       h("button", { class: "round yes", "aria-label": mode() === "rides" ? "Request a seat" : "Like", onclick: () => fling("yes") }, icon(mode() === "rides" ? "seat" : "heart")));
-    deck.replaceChildren(stage, actions, h("p", { class: "hint", style: { textAlign: "center" } }, mode() === "rides" ? "Swipe right to request a seat. The driver confirms before anything is booked." : "Swipe right if you'd travel together. A match only opens a chat."));
+    deck.replaceChildren(stage, actions);
     let i = 0, busy = false;
     const draw = () => {
       stage.replaceChildren();
@@ -154,7 +153,7 @@ function editNeed(done) {
     const win = h("select", { id: "n_win" }, WINDOWS.map((w) => h("option", { value: w[0] }, w[1]))); win.value = n.win;
     const seats = h("input", { id: "n_seats", type: "number", min: 1, max: 8, value: n.seats });
     const err = h("p", { class: "err", role: "alert", hidden: true });
-    body.append(h("h2", null, "Where are you going?"),
+    mount(body, h("h2", null, "Where are you going?"),
       h("div", { class: "field" }, h("label", { for: "n_from" }, "Pickup stop"), from),
       h("div", { class: "field" }, h("label", { for: "n_to" }, "Drop-off stop"), to),
       h("div", { class: "two" }, h("div", { class: "field" }, h("label", { for: "n_win" }, "When"), win), h("div", { class: "field" }, h("label", { for: "n_seats" }, "Seats"), seats)),
@@ -186,7 +185,7 @@ async function requestSheet(r) {
         try { await post("/api/bookings", { trip_id: t.id, pickup_stop: n.pickup, drop_stop: n.drop, seats: Number(seats.value), group_id: who.value ? Number(who.value) : undefined, message: msg.value }); sent = true; toast("Request sent. You're booked only when the driver confirms."); close(); }
         catch (x) { err.textContent = x.message; err.hidden = false; go.disabled = false; }
       } }, "Send seat request");
-      body.append(h("h2", null, `Ride with ${r.driver.name.split(" ")[0]}`),
+      mount(body, h("h2", null, `Ride with ${r.driver.name.split(" ")[0]}`),
         h("div", { class: "panel stack", style: { gap: "6px" } }, h("b", null, `${stopName(n.pickup)} to ${stopName(n.drop)}`), h("p", { class: "muted" }, `Driver reaches ${stopName(n.pickup)} around ${fmtTime(r.pickup_eta)}. ${fmtWhen(t.depart_at)} departure from ${stopName(t.origin_stop)}.`)),
         groups.length > 0 && h("div", { class: "field" }, h("label", { for: "q_who" }, "Booking for"), who),
         h("div", { class: "field" }, h("label", { for: "q_seats" }, `Seats (${t.seats_available} available)`), seats), cost,
@@ -201,7 +200,7 @@ async function requestSheet(r) {
 function matchPop(r) {
   sheet((body, close) => {
     body.classList.add("match-pop");
-    body.append(h("div", { class: "pair" }, avatar(state.me), avatar(r.user)), h("h2", null, "It's a match"),
+    mount(body, h("div", { class: "pair" }, avatar(state.me), avatar(r.user)), h("h2", null, "It's a match"),
       h("p", { class: "muted" }, `You and ${r.user.name.split(" ")[0]} could travel together. A match is a hello, not a booking.`),
       h("button", { class: "btn primary block", onclick: () => { close(); nav("/chat/" + r.conversation_id); } }, "Say hello"),
       h("button", { class: "btn ghost block", onclick: close }, "Keep swiping"));

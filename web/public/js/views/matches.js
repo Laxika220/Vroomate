@@ -1,4 +1,4 @@
-import { h, icon, toast, sheet, avatar, empty, ago, skeletons } from "../ui.js";
+import { h, icon, toast, sheet, avatar, empty, ago, skeletons, mount } from "../ui.js";
 import { get, post } from "../api.js";
 import { state, registerView, nav } from "../core.js";
 
@@ -9,7 +9,7 @@ registerView("matches", async () => {
 
   const invites = g.groups.filter((x) => x.my_status === "invited");
   if (invites.length) {
-    root.append(h("h2", null, "Group invites"), ...invites.map((x) => h("div", { class: "panel stack" },
+    mount(root, h("h2", null, "Group invites"), ...invites.map((x) => h("div", { class: "panel stack" },
       h("b", null, x.name), h("p", { class: "hint" }, `Invited by ${x.members.find((y) => y.user.id === x.owner_id).user.name}. ${x.members.filter((y) => y.status === "joined").length} joined so far.`),
       h("div", { class: "row" },
         h("button", { class: "btn primary small grow", onclick: async () => { await post(`/api/groups/${x.id}/respond`, { accept: true }); toast("You're in"); reload(); } }, "Join"),
@@ -18,7 +18,7 @@ registerView("matches", async () => {
 
   const joined = g.groups.filter((x) => x.my_status === "joined");
   if (joined.length) {
-    root.append(h("div", { class: "row between" }, h("h2", null, "Travel groups")), ...joined.map((x) => h("div", { class: "panel stack" },
+    mount(root, h("div", { class: "row between" }, h("h2", null, "Travel groups")), ...joined.map((x) => h("div", { class: "panel stack" },
       h("div", { class: "row between" }, h("b", null, x.name), h("span", { class: "tag" }, `${x.members.filter((y) => y.status === "joined").length} joined`)),
       h("div", { class: "row wrap" }, ...x.members.map((y) => h("span", { style: { opacity: y.status === "joined" ? 1 : 0.4 }, title: y.user.name + (y.status === "invited" ? " (invited)" : "") }, avatar(y.user, "sm")))),
       h("div", { class: "row" },
@@ -27,12 +27,12 @@ registerView("matches", async () => {
         h("button", { class: "btn small danger", onclick: async () => { try { await post(`/api/groups/${x.id}/leave`); reload(); } catch (e) { toast(e.message); } } }, x.owner_id === state.me.id ? "Disband" : "Leave")))));
   }
 
-  root.append(h("div", { class: "row between" }, h("h2", null, "Travel buddies"),
+  mount(root, h("div", { class: "row between" }, h("h2", null, "Travel buddies"),
     m.matches.length >= 1 && h("button", { class: "btn small", onclick: () => newGroup(m.matches, reload) }, icon("users"), "New group")));
   if (!m.matches.length) {
-    root.append(empty("heart", "No matches yet", "Swipe on travel buddies in Discover. When you both like each other, you can chat and plan the journey together.", h("button", { class: "btn primary", onclick: () => nav("/discover") }, "Find travel buddies")));
+    mount(root, empty("heart", "No matches yet", "Swipe on travel buddies in Discover. When you both like each other, you can chat and plan the journey together.", h("button", { class: "btn primary", onclick: () => nav("/discover") }, "Find travel buddies")));
   } else {
-    root.append(...m.matches.map((x) => h("button", { class: "item", onclick: () => nav("/chat/" + x.conversation_id) }, avatar(x.user),
+    mount(root, ...m.matches.map((x) => h("button", { class: "item", onclick: () => nav("/chat/" + x.conversation_id) }, avatar(x.user),
       h("div", { class: "t" }, h("b", null, x.user.name), h("span", null, x.last_message ? (x.last_message.sender_id === state.me.id ? "You: " : "") + x.last_message.body : "New match. Say hello.")),
       x.unread > 0 ? h("span", { class: "unread" }, x.unread) : h("span", { class: "hint" }, ago(x.last_message ? x.last_message.created_at : x.created_at)))));
   }
@@ -54,7 +54,7 @@ function newGroup(matches, done) {
       try { await post("/api/groups", { name: name.value, invite: [...picked] }); toast("Invites sent"); close(); done(); }
       catch (e) { err.textContent = e.message; err.hidden = false; go.disabled = false; }
     } }, "Create group");
-    body.append(h("h2", null, "New travel group"), h("p", { class: "muted" }, "Invite people you've matched with. Once they join, you can request seats together on one trip."),
+    mount(body, h("h2", null, "New travel group"), h("p", { class: "muted" }, "Invite people you've matched with. Once they join, you can request seats together on one trip."),
       h("div", { class: "field" }, h("label", { for: "g_name" }, "Group name"), name), h("span", { class: "lbl hint" }, "Invite from your matches"), list, err, go);
   });
 }

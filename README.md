@@ -1,3 +1,5 @@
+> **New: Vroomate web app.** A mobile-first Lavasa ↔ Pune carpool and travel-buddy marketplace now lives in [`web/`](web/README.md) (Node 22, no npm dependencies). The Android app below is unchanged.
+
 ## Vroomate(scroll down for pictures and video)
 
 **Cab Share** is a simple Android app that helps students **find ride partners** and **split transportation costs**. It's designed to make commuting between **Christ University Lavasa Campus and Pune** easier and more affordable.

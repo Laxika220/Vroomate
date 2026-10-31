@@ -1,4 +1,4 @@
-import { h, icon, toast, empty, sheet } from "../ui.js";
+import { h, icon, toast, empty, sheet, mount } from "../ui.js";
 import { get, post } from "../api.js";
 import { state, registerView, nav, refreshMe } from "../core.js";
 
@@ -20,17 +20,17 @@ registerView("drive", async () => {
       try { await post("/api/driver", { licence_no: lic.value, id_note: note.value }); await refreshMe(); toast("Submitted for review"); nav("/drive"); }
       catch (x) { err.textContent = x.message; err.hidden = false; btn.disabled = false; }
     } }, d ? "Resubmit" : "Submit for review");
-    node.append(
+    mount(node, 
       d && d.review_note && h("div", { class: "panel" }, h("p", { class: "err" }, "Reviewer note"), h("p", null, d.review_note)),
       h("p", { class: "muted" }, "The Vroomate team checks your licence and approves each vehicle before you can publish trips. Your licence number is only visible to reviewers."),
       h("div", { class: "field" }, h("label", { for: "d_lic" }, "Driving licence number"), lic),
       h("div", { class: "field" }, h("label", { for: "d_note" }, "About you as a driver"), note), err, btn);
     return node;
   }
-  node.append(h("div", { class: "panel row between" }, h("div", null, h("b", null, "Driver status"), h("p", { class: "hint" }, d.status === "approved" ? "You can publish trips with approved vehicles." : "We'll notify you when the review is done.")), tag(d.status)));
+  mount(node, h("div", { class: "panel row between" }, h("div", null, h("b", null, "Driver status"), h("p", { class: "hint" }, d.status === "approved" ? "You can publish trips with approved vehicles." : "We'll notify you when the review is done.")), tag(d.status)));
 
-  node.append(h("div", { class: "row between" }, h("h2", null, "Your vehicles"), h("button", { class: "btn small primary", onclick: () => addVehicle(node) }, "Add vehicle")));
-  node.append(...(info.vehicles.length ? info.vehicles.map((v) => h("div", { class: "panel row" },
+  mount(node, h("div", { class: "row between" }, h("h2", null, "Your vehicles"), h("button", { class: "btn small primary", onclick: () => addVehicle(node) }, "Add vehicle")));
+  mount(node, ...(info.vehicles.length ? info.vehicles.map((v) => h("div", { class: "panel row" },
     h("span", { style: { width: "28px", color: "var(--lav)" } }, icon("car")),
     h("div", { class: "grow" }, h("b", null, `${v.model} · ${v.colour}`), h("p", { class: "hint mono" }, `${v.plate} · ${v.seats} passenger seat${v.seats > 1 ? "s" : ""}`), v.review_note && h("p", { class: "err" }, v.review_note)), tag(v.status)))
     : [empty("car", "No vehicles yet", "Add the car or bike you'll drive. It's approved once the team checks the registration.")]));
@@ -53,7 +53,7 @@ function addVehicle() {
       try { await post("/api/vehicles", { kind: f.kind.value, model: f.model.value, colour: f.colour.value, plate: f.plate.value, seats: Number(f.seats.value) }); toast("Vehicle submitted"); close(); nav("/drive"); window.dispatchEvent(new Event("hashchange")); }
       catch (x) { err.textContent = x.message; err.hidden = false; save.disabled = false; }
     } }, "Submit vehicle");
-    body.append(h("h2", null, "Add vehicle"),
+    mount(body, h("h2", null, "Add vehicle"),
       h("div", { class: "field" }, h("label", { for: "v_kind" }, "Type"), f.kind),
       h("div", { class: "two" }, h("div", { class: "field" }, h("label", { for: "v_model" }, "Model"), f.model), h("div", { class: "field" }, h("label", { for: "v_colour" }, "Colour"), f.colour)),
       h("div", { class: "two" }, h("div", { class: "field" }, h("label", { for: "v_plate" }, "Registration no."), f.plate), h("div", { class: "field" }, h("label", { for: "v_seats" }, "Passenger seats"), f.seats)),

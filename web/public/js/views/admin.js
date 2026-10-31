@@ -1,4 +1,4 @@
-import { h, icon, toast, empty, fmtWhen } from "../ui.js";
+import { h, icon, toast, empty, fmtWhen, mount } from "../ui.js";
 import { get, post } from "../api.js";
 import { registerView, state } from "../core.js";
 
@@ -13,9 +13,9 @@ registerView("admin", async () => {
     return h("div", { class: "panel stack" }, h("b", null, label), ...lines.map((l) => h("p", { class: "hint" }, l)), h("div", { class: "field" }, note),
       h("div", { class: "row" }, h("button", { class: "btn primary small grow", onclick: go("approve") }, "Approve"), h("button", { class: "btn danger small grow", onclick: go("reject") }, "Reject")));
   };
-  root.append(h("h2", null, `Drivers (${q.drivers.length})`), ...(q.drivers.length ? q.drivers.map((d) => decideRow(`${d.name} (${d.role})`, [`${d.email}`, `Licence: ${d.licence_no}`, d.id_note || "No note"], `/api/admin/drivers/${d.user_id}`)) : [h("p", { class: "hint" }, "No drivers waiting.")]));
-  root.append(h("h2", null, `Vehicles (${q.vehicles.length})`), ...(q.vehicles.length ? q.vehicles.map((v) => decideRow(`${v.model}, ${v.colour} (${v.kind})`, [`Reg: ${v.plate}`, `${v.seats} seats, owner ${v.owner_name}`], `/api/admin/vehicles/${v.id}`)) : [h("p", { class: "hint" }, "No vehicles waiting.")]));
-  root.append(h("h2", null, `Reports (${q.reports.length})`), ...(q.reports.length ? q.reports.map((r) => h("div", { class: "panel stack" },
+  mount(root, h("h2", null, `Drivers (${q.drivers.length})`), ...(q.drivers.length ? q.drivers.map((d) => decideRow(`${d.name} (${d.role})`, [`${d.email}`, `Licence: ${d.licence_no}`, d.id_note || "No note"], `/api/admin/drivers/${d.user_id}`)) : [h("p", { class: "hint" }, "No drivers waiting.")]));
+  mount(root, h("h2", null, `Vehicles (${q.vehicles.length})`), ...(q.vehicles.length ? q.vehicles.map((v) => decideRow(`${v.model}, ${v.colour} (${v.kind})`, [`Reg: ${v.plate}`, `${v.seats} seats, owner ${v.owner_name}`], `/api/admin/vehicles/${v.id}`)) : [h("p", { class: "hint" }, "No vehicles waiting.")]));
+  mount(root, h("h2", null, `Reports (${q.reports.length})`), ...(q.reports.length ? q.reports.map((r) => h("div", { class: "panel stack" },
     h("b", null, `${r.reporter_name} reported ${r.target_name}`), h("p", { class: "hint" }, `${r.reason} · ${fmtWhen(r.created_at)}`), r.details && h("p", null, r.details),
     h("div", { class: "row" },
       h("button", { class: "btn small grow", onclick: async () => { await post(`/api/admin/reports/${r.id}`, { action: "dismiss" }); reload(); } }, "Dismiss"),

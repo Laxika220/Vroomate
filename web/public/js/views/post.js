@@ -1,4 +1,4 @@
-import { h, icon, toast, istToMs, msToIst, inr } from "../ui.js";
+import { h, icon, toast, istToMs, msToIst, inr, mount } from "../ui.js";
 import { get, post } from "../api.js";
 import { state, registerView, nav, legKm } from "../core.js";
 
@@ -26,8 +26,8 @@ registerView("post", async (arg) => {
     ...[["offer", "Offer a ride", "car"], ["request", "Request a ride", "users"]].map(([id, label, ic]) =>
       h("button", { class: "chip" + (mode === id ? " on" : ""), "aria-pressed": String(mode === id), style: { justifyContent: "center", minHeight: "48px" }, onclick: () => nav("/post/" + id) }, icon(ic), label)));
   [...seg.querySelectorAll("svg")].forEach((s) => { s.style.width = "20px"; s.style.height = "20px"; });
-  wrap.append(h("h1", { style: { fontSize: "28px" } }, "Post"), seg);
-  wrap.append(mode === "offer" ? await offerForm() : requestForm());
+  mount(wrap, h("div", { class: "row between" }, h("h1", { style: { fontSize: "28px" } }, "Post"), h("a", { class: "btn small", href: "#/radar" }, icon("radar"), "Ride Radar")), seg);
+  mount(wrap, mode === "offer" ? await offerForm() : requestForm());
   return wrap;
 });
 

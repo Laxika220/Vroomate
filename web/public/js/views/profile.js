@@ -1,4 +1,4 @@
-import { h, icon, toast, avatar, sheet } from "../ui.js";
+import { h, icon, toast, avatar, sheet, mount } from "../ui.js";
 import { post, put } from "../api.js";
 import { state, registerView, nav } from "../core.js";
 import { pickPhoto } from "./auth.js";
@@ -78,7 +78,7 @@ function editSheet(onSaved) {
         state.me = r.user; toast("Profile saved"); close(); onSaved();
       } catch (x) { err.textContent = x.message; err.hidden = false; save.disabled = false; }
     } }, "Save");
-    body.append(h("h2", null, "Edit profile"),
+    mount(body, h("h2", null, "Edit profile"),
       h("div", { class: "field" }, h("label", { for: "e_name" }, "Name"), f.name),
       h("div", { class: "field" }, h("label", { for: "e_bio" }, "About you"), f.bio),
       h("div", { class: "field" }, h("label", { for: "e_course" }, u.role === "faculty" ? "Department" : "Course and year"), f.course),
