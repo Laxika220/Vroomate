@@ -1,0 +1,22 @@
+{
+  "_note": "Edit this file to change the corridor. Stops are ordered along one line from Lavasa (position 0) to Pune. km and minutes are approximate typical values from Lavasa and are used for pickup feasibility and arrival-time estimates. Add stops by inserting in order with increasing km and min.",
+  "corridorName": "Lavasa ↔ Pune",
+  "suggestedFarePerKmInr": 2.5,
+  "maxFarePerKmInr": 6,
+  "timeSlackMinutes": 20,
+  "stops": [
+    { "id": "lavasa-campus", "name": "CHRIST University Lavasa Campus", "short": "Lavasa Campus", "km": 0,  "min": 0,   "kind": "campus" },
+    { "id": "dasve",         "name": "Dasve",                          "short": "Dasve",         "km": 4,  "min": 8,   "kind": "town" },
+    { "id": "mulshi",        "name": "Mulshi",                         "short": "Mulshi",        "km": 22, "min": 40,  "kind": "town" },
+    { "id": "paud",          "name": "Paud",                           "short": "Paud",          "km": 36, "min": 65,  "kind": "town" },
+    { "id": "pirangut",      "name": "Pirangut",                       "short": "Pirangut",      "km": 44, "min": 75,  "kind": "town" },
+    { "id": "bavdhan",       "name": "Bavdhan",                        "short": "Bavdhan",       "km": 52, "min": 90,  "kind": "pune" },
+    { "id": "chandni-chowk", "name": "Chandni Chowk",                  "short": "Chandni Chowk", "km": 54, "min": 95,  "kind": "pune" },
+    { "id": "kothrud",       "name": "Kothrud",                        "short": "Kothrud",       "km": 57, "min": 100, "kind": "pune" },
+    { "id": "deccan",        "name": "Deccan Gymkhana",                "short": "Deccan",        "km": 61, "min": 110, "kind": "pune" },
+    { "id": "shivajinagar",  "name": "Shivajinagar",                   "short": "Shivajinagar",  "km": 63, "min": 115, "kind": "pune" },
+    { "id": "pune-station",  "name": "Pune Railway Station",           "short": "Pune Station",  "km": 66, "min": 125, "kind": "pune" }
+  ],
+  "interests": ["Music", "Podcasts", "Cricket", "Football", "Hiking", "Photography", "Gaming", "Books", "Food", "Startups", "Fitness", "Movies"],
+  "allowedEmailDomains": ["christuniversity.in"]
+}
