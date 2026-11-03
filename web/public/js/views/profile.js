@@ -26,6 +26,7 @@ registerView("profile", async () => {
       row("Phone number", "shield", async () => { if (!state.me.phone_verified && await verifyPhone()) nav("/profile"); else if (state.me.phone_verified) editSheet(drawHead); }, phoneTag()),
       row("Emergency contact", "flag", () => emergencySheet(), state.me.emergency_phone ? h("span", { class: "hint" }, state.me.emergency_name || "Set") : null),
       row("Notification settings", "bell", () => notifySheet()),
+      installRow(row),
       row("Notifications", "bell", () => nav("/notifications"), me.unread_notifications > 0 && h("span", { class: "count" }, me.unread_notifications)),
       row("Blocked people", "block", () => nav("/blocked")),
       me.is_admin && row("Reports", "shield", () => nav("/admin"))),
@@ -35,10 +36,19 @@ registerView("profile", async () => {
       row("Download my data", "list", () => { location.href = "/api/me/export"; }),
       row("Terms of use", "list", () => nav("/terms")),
       row("Privacy policy", "list", () => nav("/privacy")),
-      row("Log out", "logout", async () => { await post("/api/auth/logout"); location.hash = ""; window.dispatchEvent(new Event("vm:session")); }),
-      row("Delete account", "x", () => deleteSheet())),
+      row("Log out", "logout", async () => { await import("../push.js").then((m) => m.disablePush()).catch(() => {}); await post("/api/auth/logout"); location.hash = ""; window.dispatchEvent(new Event("vm:session")); }),
+      Object.assign(row("Delete account", "x", () => deleteSheet()), { className: "item danger" })),
   ];
 });
+
+/** "Install app": the browser's own prompt where there is one, instructions on iPhone, nothing once installed. */
+function installRow(row) {
+  if (matchMedia("(display-mode: standalone)").matches || navigator.standalone) return null;
+  if (state.installPrompt) return row("Install app", "plus", async () => { state.installPrompt.prompt(); await state.installPrompt.userChoice; state.installPrompt = null; nav("/profile"); });
+  if (/iphone|ipad|ipod/i.test(navigator.userAgent)) return row("Install app", "plus", () => sheet((body) => mount(body, h("h2", null, "Add Vroomate to your Home Screen"),
+    h("p", null, "In Safari, tap the Share button, then Add to Home Screen. Vroomate then opens full screen and can send you notifications."))));
+  return null;
+}
 
 const field = (id, label, input, hint) => h("div", { class: "field" }, h("label", { for: id }, label), input, hint && h("p", { class: "hint" }, hint));
 /** A sheet with a form: `submit` gets the inputs; errors show inline. */

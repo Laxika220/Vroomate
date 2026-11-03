@@ -61,6 +61,10 @@ views.notfound = async () => h("div", { class: "empty" }, h("h3", null, "Page no
 window.addEventListener("hashchange", route);
 window.addEventListener("vm:session", async () => { await refreshMe(); route(); });
 
+// Android/desktop Chrome offer an install prompt; keep it for the "Install app" row in Account.
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); state.installPrompt = e; });
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => { /* offline support is optional */ });
+
 (async () => {
   try { state.cfg = await get("/api/config"); } catch { /* shown by auth view */ }
   await refreshMe();

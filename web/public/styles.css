@@ -201,3 +201,4 @@ a.tab,a.btn,a.iconbtn{text-decoration:none}
 .starbtn svg{width:36px;height:36px}
 .starbtn[aria-pressed="true"]{color:#e0a100}
 .starbtn[aria-pressed="true"] svg{fill:currentColor}
+.item.danger{color:var(--bad)}
