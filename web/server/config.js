@@ -43,5 +43,7 @@ module.exports = {
     stops,
     suggestedFarePerKmInr: cfg.suggestedFarePerKmInr,
     maxFarePerKmInr: cfg.maxFarePerKmInr,
+    supportEmail: process.env.SUPPORT_EMAIL || "",
+    vapidPublicKey: process.env.VAPID_PUBLIC_KEY || "",
   }),
 };

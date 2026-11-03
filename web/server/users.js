@@ -29,9 +29,15 @@ function publicUser(u) {
 }
 function selfUser(u) {
   return {
-    ...publicUser(u), email: u.email, phone: u.phone, women_only: !!u.women_only, discoverable: !!u.discoverable, is_admin: !!u.is_admin,
+    ...publicUser(u), email: u.email, phone: u.phone, phone_verified: !!u.phone_verified, women_only: !!u.women_only, discoverable: !!u.discoverable, is_admin: !!u.is_admin,
+    email_notifications: !!u.email_notifications, emergency_name: u.emergency_name || "", emergency_phone: u.emergency_phone || "",
     unread_notifications: db.prepare("SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read_at IS NULL").get(u.id).n,
   };
+}
+
+/** Drivers and riders reach each other by phone once a seat is confirmed, so both must prove the number is theirs. */
+function requireVerifiedPhone(user) {
+  if (!user.phone_verified) throw new HttpError(403, "Verify your phone number first. It's how your driver or passengers reach you.", "phone_unverified");
 }
 
 function setSession(res, token) { res.setHeader("Set-Cookie", A.cookie(token, 30 * 24 * 3600)); }
@@ -46,12 +52,13 @@ route("POST", "/api/auth/signup", { auth: false }, ({ res, body }) => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw bad("Enter a valid email address.");
   if (name.length < 2) throw bad("Enter your name.");
   if (password.length < 8) throw bad("Password needs at least 8 characters.");
+  if (body.accept_terms !== true) throw bad("Please accept the terms and privacy policy.");
   const phone = str(body.phone, 20, "Phone");
   if (phone && !/^[0-9+\-\s]{7,20}$/.test(phone)) throw bad("Phone number looks wrong.");
   if (db.prepare("SELECT 1 FROM users WHERE email=?").get(email)) throw new HttpError(409, "That email already has an account. Log in instead.");
   const gender = ["f", "m", "x"].includes(body.gender) ? body.gender : "x";
-  const info = db.prepare("INSERT INTO users (email,password_hash,name,role,gender,phone,created_at) VALUES (?,?,?,?,?,?,?)")
-    .run(email, A.hashPassword(password), name, role, gender, phone || null, Date.now());
+  const info = db.prepare("INSERT INTO users (email,password_hash,name,role,gender,phone,terms_accepted_at,created_at) VALUES (?,?,?,?,?,?,?,?)")
+    .run(email, A.hashPassword(password), name, role, gender, phone || null, Date.now(), Date.now());
   const id = Number(info.lastInsertRowid);
   setSession(res, A.createSession(id));
   send(res, 201, { user: selfUser(db.prepare("SELECT * FROM users WHERE id=?").get(id)) });
@@ -83,10 +90,12 @@ route("PUT", "/api/me", ({ res, user, body }) => {
   if (phone && !/^[0-9+\-\s]{7,20}$/.test(phone)) throw bad("Phone number looks wrong.");
   const name = str(body.name ?? user.name, 60, "Name");
   if (name.length < 2) throw bad("Enter your name.");
-  db.prepare(`UPDATE users SET name=?, bio=?, home_stop=?, gender=?, women_only=?, discoverable=?, phone=? WHERE id=?`)
+  // A new number has to be verified again.
+  const sameNumber = (phone || null) === (user.phone || null);
+  db.prepare(`UPDATE users SET name=?, bio=?, home_stop=?, gender=?, women_only=?, discoverable=?, phone=?, phone_verified=? WHERE id=?`)
     .run(name, str(body.bio, 160, "Bio"), body.home_stop || null,
       ["f", "m", "x"].includes(body.gender) ? body.gender : user.gender,
-      body.women_only ? 1 : 0, body.discoverable === false ? 0 : 1, phone || null, user.id);
+      body.women_only ? 1 : 0, body.discoverable === false ? 0 : 1, phone || null, sameNumber ? user.phone_verified : 0, user.id);
   send(res, 200, { user: selfUser(db.prepare("SELECT * FROM users WHERE id=?").get(user.id)) });
 });
 
@@ -112,4 +121,4 @@ route("GET", "/api/users/:id", ({ res, user, params }) => {
   send(res, 200, { user: publicUser(u) });
 });
 
-module.exports = { publicUser, selfUser, isBlocked, UPLOADS };
+module.exports = { publicUser, selfUser, isBlocked, requireVerifiedPhone, UPLOADS };

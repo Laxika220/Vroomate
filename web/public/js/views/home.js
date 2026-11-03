@@ -1,5 +1,6 @@
 import { h, icon, toast, sheet, avatar, fmtDay, fmtTime, inr, empty, mount } from "../ui.js";
 import { get, post } from "../api.js";
+import { withVerifiedPhone } from "./verify.js";
 import { state, registerView, nav, stopById, stopName, routeView } from "../core.js";
 
 /* ---- filters, remembered between visits. Empty pickup/drop means "any stop". ---- */
@@ -236,8 +237,8 @@ function requestSheet(r) {
       const err = h("p", { class: "err", role: "alert", hidden: true });
       const go = h("button", { class: "btn primary block", onclick: async () => {
         go.disabled = true; err.hidden = true;
-        try { await post("/api/bookings", { trip_id: t.id, pickup_stop: r.pickup, drop_stop: r.drop, seats: Number(seats.value), message: msg.value }); sent = true; toast(`Request sent to ${r.driver.name.split(" ")[0]}`); close(); }
-        catch (x) { err.textContent = x.message; err.hidden = false; go.disabled = false; }
+        try { await withVerifiedPhone(() => post("/api/bookings", { trip_id: t.id, pickup_stop: r.pickup, drop_stop: r.drop, seats: Number(seats.value), message: msg.value })); sent = true; toast(`Request sent to ${r.driver.name.split(" ")[0]}`); close(); }
+        catch (x) { if (!x.quiet) { err.textContent = x.message; err.hidden = false; } go.disabled = false; }
       } }, "Send request");
       mount(body, h("h2", null, "Request a seat"),
         routeView(r.pickup, r.drop, fmtTime(r.pickup_eta), fmtTime(arrival(t, r.drop))),

@@ -11,6 +11,7 @@ import "./views/profile.js";
 import "./views/notifications.js";
 import "./views/safety.js";
 import "./views/admin.js";
+import "./views/legal.js";
 
 const root = document.getElementById("app");
 const screen = h("main", { id: "screen" });
@@ -19,6 +20,8 @@ root.append(screen, tabbar);
 
 const TABS = [["home", "Home", "home"], ["offer", "Offer", "plus"], ["rides", "Trips", "route"], ["inbox", "Inbox", "chat"], ["profile", "Account", "user"]];
 // Older links (notifications, bookmarks) point at screens that were merged.
+// Screens anyone can open without an account: legal pages, password reset links and shared trip links.
+const PUBLIC = new Set(["welcome", "terms", "privacy", "reset", "share"]);
 const ALIAS = { discover: "home", radar: "home", matches: "inbox", post: "offer", drive: "offer" };
 
 function drawTabs(active) {
@@ -33,7 +36,7 @@ async function route() {
   const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean);
   let name = ALIAS[parts[0]] || parts[0] || "home";
   const arg = parts[1];
-  if (!state.me) name = "welcome";
+  if (!state.me && !PUBLIC.has(name)) name = "welcome";
   const view = views[name] || views.notfound;
   screen.replaceChildren(h("div", { class: "skeleton", style: { minHeight: "40vh" } }));
   let out;

@@ -1,6 +1,7 @@
 import { h, icon, toast, istToMs, msToIst, inr } from "../ui.js";
 import { get, post } from "../api.js";
 import { state, registerView, nav, legKm } from "../core.js";
+import { withVerifiedPhone } from "./verify.js";
 
 /** From/To stop pickers joined by a line, with a swap button. */
 function whereFields(o, d, onChange) {
@@ -47,10 +48,10 @@ async function offerForm() {
   const btn = h("button", { class: "btn primary block", onclick: async () => {
     err.hidden = true; btn.disabled = true;
     try {
-      await post("/api/trips", { origin_stop: where.from.value, dest_stop: where.to.value, depart_at: istToMs(when.value), seats: Number(seats.value),
-        price_per_seat: price.value, notes: notes.value, women_only: women.checked, vehicle: { model: model.value, colour: colour.value, plate: plate.value } });
+      await withVerifiedPhone(() => post("/api/trips", { origin_stop: where.from.value, dest_stop: where.to.value, depart_at: istToMs(when.value), seats: Number(seats.value),
+        price_per_seat: price.value, notes: notes.value, women_only: women.checked, vehicle: { model: model.value, colour: colour.value, plate: plate.value } }));
       toast("Your ride is live"); nav("/rides");
-    } catch (x) { err.textContent = x.message; err.hidden = false; btn.disabled = false; }
+    } catch (x) { if (!x.quiet) { err.textContent = x.message; err.hidden = false; } btn.disabled = false; }
   } }, "Post ride");
   return h("div", { class: "stack", style: { gap: "16px" } },
     where.node,

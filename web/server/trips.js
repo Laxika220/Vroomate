@@ -3,7 +3,7 @@ const { db, tx } = require("./db");
 const cfg = require("./config");
 const { notify } = require("./notify");
 const { route, bad, forbidden, notFound, conflict, send } = require("./http");
-const { publicUser } = require("./users");
+const { publicUser, requireVerifiedPhone } = require("./users");
 const { reopenRequests } = require("./fulfil");
 
 const int = (v, lo, hi, field) => {
@@ -43,6 +43,7 @@ route("POST", "/api/vehicles", ({ res, user, body }) => {
 
 /* ---------- trips ---------- */
 route("POST", "/api/trips", ({ res, user, body }) => {
+  requireVerifiedPhone(user);
   const o = validStop(body.origin_stop, "start"), d = validStop(body.dest_stop, "destination");
   if (o === d) throw bad("Start and destination must be different.");
   const departAt = Number(body.depart_at);

@@ -71,9 +71,10 @@ const out = tx(() => {
   for (const p of people) {
     const email = `${p.key}@demo.vroomate`;
     const found = db.prepare("SELECT id FROM users WHERE email=?").get(email);
-    if (found) { ids[p.key] = found.id; continue; }
-    const info = db.prepare("INSERT INTO users (email,password_hash,name,role,gender,phone,bio,created_at) VALUES (?,?,?,'community',?,?,?,?)")
-      .run(email, hashPassword(PASSWORD), p.name, p.gender, p.phone || null, p.bio, now);
+    const phone = p.phone || "98220110" + String(people.indexOf(p) + 1).padStart(2, "0");
+    if (found) { ids[p.key] = found.id; db.prepare("UPDATE users SET phone=COALESCE(phone,?), phone_verified=1 WHERE id=?").run(phone, found.id); continue; }
+    const info = db.prepare("INSERT INTO users (email,password_hash,name,role,gender,phone,phone_verified,bio,terms_accepted_at,created_at) VALUES (?,?,?,'community',?,?,1,?,?,?)")
+      .run(email, hashPassword(PASSWORD), p.name, p.gender, phone, p.bio, now, now);
     ids[p.key] = Number(info.lastInsertRowid);
   }
   const demo = Object.values(ids), list = demo.join(",");

@@ -143,6 +143,7 @@ test("a driver cancelling a trip cancels every booking on it", async () => {
 test("plates and contact details stay private until a booking is confirmed", async () => {
   const d = await H.approvedDriver(admin);
   await d.ok("PUT", "/api/me", { ...d.user, phone: "+91 98765 43210" });
+  H.db.prepare("UPDATE users SET phone_verified=1 WHERE id=?").run(d.user.id);
   const t = await publish(d, { seats: 2 });
   const rider = await H.account("student");
   const b = await rider.post("/api/bookings", { trip_id: t.id, pickup_stop: "lavasa-campus", drop_stop: "pune-station", seats: 1 });

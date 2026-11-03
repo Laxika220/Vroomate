@@ -230,4 +230,50 @@ function tx(fn) {
   }
 }
 
+// Columns and tables added after the first release. Older databases are upgraded in place on start.
+addColumn("users", "phone_verified", "INTEGER NOT NULL DEFAULT 0");
+addColumn("users", "email_notifications", "INTEGER NOT NULL DEFAULT 1");
+addColumn("users", "emergency_name", "TEXT");
+addColumn("users", "emergency_phone", "TEXT");
+addColumn("users", "terms_accepted_at", "INTEGER");
+addColumn("users", "deleted_at", "INTEGER");
+db.exec(`
+CREATE TABLE IF NOT EXISTS password_resets (
+  token_hash TEXT PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS phone_codes (
+  user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  phone      TEXT NOT NULL,
+  code_hash  TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  attempts   INTEGER NOT NULL DEFAULT 0,
+  sent_at    INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ratings (
+  id         INTEGER PRIMARY KEY,
+  booking_id INTEGER NOT NULL REFERENCES bookings(id),
+  rater_id   INTEGER NOT NULL REFERENCES users(id),
+  ratee_id   INTEGER NOT NULL REFERENCES users(id),
+  stars      INTEGER NOT NULL CHECK (stars BETWEEN 1 AND 5),
+  comment    TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  UNIQUE (booking_id, rater_id, ratee_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ratings_ratee ON ratings(ratee_id);
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  endpoint   TEXT PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  p256dh     TEXT NOT NULL,
+  auth       TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS trip_shares (
+  token      TEXT PRIMARY KEY,
+  booking_id INTEGER NOT NULL REFERENCES bookings(id),
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at INTEGER NOT NULL
+);`);
+
 module.exports = { db, tx, dbPath, addColumn };

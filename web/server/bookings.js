@@ -5,7 +5,7 @@ const { notify } = require("./notify");
 const { ensureConversation } = require("./conv");
 const { feasible, genderOk } = require("./matching");
 const { route, bad, forbidden, notFound, conflict, send } = require("./http");
-const { publicUser, isBlocked } = require("./users");
+const { publicUser, isBlocked, requireVerifiedPhone } = require("./users");
 const { fulfilRequests, reopenRequests } = require("./fulfil");
 
 const stopLabel = (id) => (cfg.stop(id) ? cfg.stop(id).short : id);
@@ -19,6 +19,7 @@ const travellers = (b) => (b.group_id ? joinedMembers(b.group_id) : [b.rider_id]
  * (see /respond), inside a transaction, so two simultaneous accepts can never overbook.
  */
 route("POST", "/api/bookings", ({ res, user, body }) => {
+  requireVerifiedPhone(user);
   const tripId = Number(body.trip_id);
   const out = tx(() => {
     const t = db.prepare("SELECT * FROM trips WHERE id=?").get(tripId);

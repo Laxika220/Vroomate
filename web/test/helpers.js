@@ -40,9 +40,10 @@ class Client {
 let n = 0;
 /** Create an account. Anyone can sign up with any email; no verification step. */
 async function account(role, extra = {}) {
-  n++;
+  const email = `user${++n}@example.com`;
   const c = new Client();
-  await c.post("/api/auth/signup", { email: `user${n}@example.com`, password: "password123", name: extra.name || `${role[0].toUpperCase() + role.slice(1)} ${n}`, gender: extra.gender || "x" });
+  await c.post("/api/auth/signup", { email, password: "password123", accept_terms: true, name: extra.name || `${role[0].toUpperCase() + role.slice(1)} ${n}`, gender: extra.gender || "x" });
+  if (!extra.unverified) db.prepare("UPDATE users SET phone='9800000000', phone_verified=1 WHERE email=?").run(email);
   c.user = (await c.get("/api/me")).user;
   if (extra.home_stop) await c.ok("PUT", "/api/me", { ...c.user, home_stop: extra.home_stop });
   return c;
