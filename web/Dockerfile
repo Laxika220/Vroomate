@@ -9,8 +9,9 @@ ENV NODE_ENV=production \
     VROOMATE_BACKUP_DIR=/data/backups \
     VROOMATE_BACKUP=1
 # Database, photos and backups live on a mounted disk so they survive redeploys.
+# Runs as root because hosted disks are usually mounted root-owned; the app itself needs no other privileges.
+RUN mkdir -p /data
 VOLUME /data
 EXPOSE 3000
-USER node
 HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1:3000/healthz || exit 1
 CMD ["node", "--disable-warning=ExperimentalWarning", "server/index.js"]

@@ -8,7 +8,7 @@ const { db, tx } = require("./db");
 const A = require("./auth");
 const { route, bad, send, HttpError, clientIp, limiter } = require("./http");
 const { selfUser, UPLOADS } = require("./users");
-const { sendEmail, sendSms, showDevCodes, PROD } = require("./outbox");
+const { sendEmail, sendSms, showDevCodes, smsReady, PROD } = require("./outbox");
 
 const sha = (s) => crypto.createHash("sha256").update(String(s)).digest("hex");
 const me = (id) => selfUser(db.prepare("SELECT * FROM users WHERE id=?").get(id));
@@ -61,6 +61,7 @@ route("POST", "/api/me/password", ({ res, user, body, token }) => {
 
 route("POST", "/api/me/phone/send", async ({ res, user }) => {
   if (!user.phone) throw bad("Add your phone number first.");
+  if (PROD && !smsReady()) throw new HttpError(503, "Text messages aren't set up on this server yet. Ask the Vroomate team.");
   const prev = db.prepare("SELECT sent_at FROM phone_codes WHERE user_id=?").get(user.id);
   if (prev && Date.now() - prev.sent_at < 45000) throw new HttpError(429, "Wait a few seconds before asking for another code.");
   if (smsLimited(String(user.id))) throw new HttpError(429, "Too many codes today. Try again tomorrow.");
