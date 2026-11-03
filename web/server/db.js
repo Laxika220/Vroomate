@@ -237,6 +237,7 @@ addColumn("users", "emergency_name", "TEXT");
 addColumn("users", "emergency_phone", "TEXT");
 addColumn("users", "terms_accepted_at", "INTEGER");
 addColumn("users", "deleted_at", "INTEGER");
+addColumn("users", "suspended_at", "INTEGER");
 db.exec(`
 CREATE TABLE IF NOT EXISTS password_resets (
   token_hash TEXT PRIMARY KEY,

@@ -26,7 +26,7 @@ function createSession(userId) {
 }
 function userFromToken(token) {
   if (!token) return null;
-  const row = db.prepare(`SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ?`).get(sha(token), Date.now());
+  const row = db.prepare(`SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ? AND u.suspended_at IS NULL`).get(sha(token), Date.now());
   return row || null;
 }
 function destroySession(token) { if (token) db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(sha(token)); }

@@ -111,3 +111,19 @@ test("Ride Radar: demand without drivers alerts recent drivers once; a published
   for (const r of riders) assert.equal(H.db.prepare("SELECT COUNT(*) n FROM notifications WHERE user_id=? AND kind='radar'").get(r.user.id).n, 1, "each rider told a matching trip exists");
   assert.equal((await d.get("/api/radar")).demand.some(mine), false, "demand is served now");
 });
+
+test("admins can suspend someone: logged out, can't log in, rides cancelled and passengers told", async () => {
+  const admin = await H.account("community"); H.makeAdmin(admin);
+  const d = await H.approvedDriver(null);
+  const t = await d.post("/api/trips", { vehicle_id: d.vehicleId, origin_stop: "lavasa-campus", dest_stop: "pune-station", depart_at: H.inHours(4), seats: 2, price_per_seat: 150 });
+  const r = await H.account("community");
+  const b = await r.post("/api/bookings", { trip_id: t.id, pickup_stop: "lavasa-campus", drop_stop: "pune-station" });
+  assert.equal((await r.call("POST", `/api/admin/users/${d.user.id}/suspend`, {})).status, 403, "admins only");
+  await admin.post(`/api/admin/users/${d.user.id}/suspend`, {});
+  assert.equal((await d.call("GET", "/api/me")).status, 401);
+  assert.equal((await new H.Client().call("POST", "/api/auth/login", { email: d.user.email, password: "password123" })).status, 403);
+  assert.equal((await r.get("/api/bookings/mine")).bookings.find((x) => x.id === b.id).status, "cancelled");
+  assert.ok((await r.get("/api/notifications")).notifications.some((n) => n.title === "Ride cancelled"));
+  await admin.post(`/api/admin/users/${d.user.id}/suspend`, { suspend: false });
+  assert.equal((await new H.Client().call("POST", "/api/auth/login", { email: d.user.email, password: "password123" })).status, 200);
+});

@@ -76,6 +76,7 @@ route("POST", "/api/auth/login", { auth: false }, ({ req, res, body }) => {
   if (A.throttled(key)) throw new HttpError(429, "Too many attempts. Try again in a few minutes.");
   const u = db.prepare("SELECT * FROM users WHERE email=?").get(email);
   if (!u || !A.checkPassword(String(body.password || ""), u.password_hash)) { A.noteFail(key); throw new HttpError(401, "Email or password is wrong."); }
+  if (u.suspended_at) throw new HttpError(403, "This account is suspended. Contact the Vroomate team if you think this is a mistake.");
   A.clearFails(key);
   setSession(res, A.createSession(u.id));
   send(res, 200, { user: selfUser(u) });
