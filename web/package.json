@@ -11,6 +11,7 @@
     "dev": "node --disable-warning=ExperimentalWarning --watch server/index.js",
     "test": "node --disable-warning=ExperimentalWarning --test \"test/*.test.js\"",
     "make-admin": "node --disable-warning=ExperimentalWarning server/make-admin.js",
-    "seed": "node --disable-warning=ExperimentalWarning server/seed.js"
+    "seed": "node --disable-warning=ExperimentalWarning server/seed.js",
+    "backup": "node --disable-warning=ExperimentalWarning server/backup.js"
   }
 }

@@ -64,4 +64,21 @@ function serveFile(res, root, rel, cache) {
   return true;
 }
 
-module.exports = { HttpError, bad, forbidden, notFound, conflict, route, routes, readBody, parseCookies, send, serveFile };
+/** The caller's IP. Behind a reverse proxy (TRUST_PROXY=1) it's the first X-Forwarded-For entry. */
+function clientIp(req) {
+  if (process.env.TRUST_PROXY === "1" && req.headers["x-forwarded-for"]) return String(req.headers["x-forwarded-for"]).split(",")[0].trim();
+  return req.socket.remoteAddress || "";
+}
+
+/** Fixed-window counter per key: true once `limit` hits land inside `windowMs`. */
+function limiter(limit, windowMs) {
+  const hits = new Map();
+  setInterval(() => { const now = Date.now(); for (const [k, v] of hits) if (now - v.t > windowMs) hits.delete(k); }, windowMs).unref();
+  return (key) => {
+    const now = Date.now(), h = hits.get(key);
+    if (!h || now - h.t > windowMs) { hits.set(key, { t: now, n: 1 }); return false; }
+    return ++h.n > limit;
+  };
+}
+
+module.exports = { clientIp, limiter, HttpError, bad, forbidden, notFound, conflict, route, routes, readBody, parseCookies, send, serveFile };

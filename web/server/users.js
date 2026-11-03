@@ -5,7 +5,7 @@ const path = require("path");
 const { db } = require("./db");
 const cfg = require("./config");
 const A = require("./auth");
-const { route, bad, notFound, send, HttpError } = require("./http");
+const { route, bad, notFound, send, HttpError, clientIp } = require("./http");
 
 const UPLOADS = process.env.VROOMATE_UPLOADS || path.join(__dirname, "..", "data", "uploads");
 const ROLES = ["student", "faculty", "driver", "community"];
@@ -59,7 +59,7 @@ route("POST", "/api/auth/signup", { auth: false }, ({ res, body }) => {
 
 route("POST", "/api/auth/login", { auth: false }, ({ req, res, body }) => {
   const email = String(body.email || "").trim().toLowerCase();
-  const key = (req.socket.remoteAddress || "") + "|" + email;
+  const key = clientIp(req) + "|" + email;
   if (A.throttled(key)) throw new HttpError(429, "Too many attempts. Try again in a few minutes.");
   const u = db.prepare("SELECT * FROM users WHERE email=?").get(email);
   if (!u || !A.checkPassword(String(body.password || ""), u.password_hash)) { A.noteFail(key); throw new HttpError(401, "Email or password is wrong."); }

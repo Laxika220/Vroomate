@@ -3,17 +3,44 @@ const http = require("http");
 const path = require("path");
 const A = require("./auth");
 const H = require("./http");
+const { db } = require("./db");
 const { UPLOADS } = require("./users");
-for (const m of ["trips", "matching", "bookings", "messages", "safety", "admin", "radar"]) {
+for (const m of ["trips", "matching", "bookings", "messages", "safety", "admin", "radar", "account", "ratings", "push", "housekeeping"]) {
   try { require("./" + m); } catch (e) { if (e.code !== "MODULE_NOT_FOUND" || !String(e.message).includes(`'./${m}'`)) throw e; }
 }
 
 const PUBLIC = path.join(__dirname, "..", "public");
+const SECURE = process.env.VROOMATE_SECURE_COOKIE === "1";
+const apiLimited = H.limiter(Number(process.env.API_RATE_LIMIT || 300), 60000);   // requests per IP per minute
+
+const SECURITY_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "same-origin",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=(self)",
+  "Content-Security-Policy": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+  ...(SECURE ? { "Strict-Transport-Security": "max-age=31536000; includeSubDomains" } : {}),
+};
+
+/** Reject state-changing requests that a browser sent from another site. SameSite=Lax cookies already stop most; this is the backstop. */
+function crossSite(req) {
+  if (req.headers["sec-fetch-site"] === "cross-site") return true;
+  const origin = req.headers.origin;
+  if (!origin || origin === "null") return false;
+  try { return new URL(origin).host !== req.headers.host; } catch { return true; }
+}
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
   try {
+    if (url.pathname === "/healthz") {
+      db.prepare("SELECT 1").get();
+      return H.send(res, 200, { ok: true });
+    }
     if (url.pathname.startsWith("/api/")) {
+      if (apiLimited(H.clientIp(req))) throw new H.HttpError(429, "Too many requests. Slow down and try again in a minute.");
+      if (req.method !== "GET" && crossSite(req)) throw H.forbidden("Cross-site request refused.");
       const r = H.routes.find((r) => r.method === req.method && r.re.test(url.pathname));
       if (!r) {
         if (H.routes.some((x) => x.re.test(url.pathname))) throw new H.HttpError(405, "Method not allowed");
@@ -50,7 +77,12 @@ const server = http.createServer(async (req, res) => {
 });
 
 if (require.main === module) {
-  const port = Number(process.env.PORT || 3000);
-  server.listen(port, () => console.log(`Vroomate running at http://localhost:${port}`));
+  const port = Number(process.env.PORT || 3000), host = process.env.HOST || "0.0.0.0";
+  server.listen(port, host, () => console.log(`Vroomate running at http://localhost:${port}`));
+  // Platforms stop containers with SIGTERM: finish in-flight requests, then close the database cleanly.
+  for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => {
+    server.close(() => { db.close(); process.exit(0); });
+    setTimeout(() => process.exit(0), 5000).unref();
+  });
 }
 module.exports = { server };

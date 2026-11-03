@@ -211,6 +211,11 @@ CREATE TABLE IF NOT EXISTS blocks (
 );
 `);
 
+/** Add a column to an existing table if an older database doesn't have it yet. */
+function addColumn(table, column, definition) {
+  if (!db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+
 /** Run fn inside an IMMEDIATE transaction (takes the write lock up front, so
  *  seat checks and updates cannot interleave with another writer). */
 function tx(fn) {
@@ -225,4 +230,4 @@ function tx(fn) {
   }
 }
 
-module.exports = { db, tx, dbPath };
+module.exports = { db, tx, dbPath, addColumn };

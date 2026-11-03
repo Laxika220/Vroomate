@@ -1,0 +1,30 @@
+# One-click deploy on Render (render.com): New > Blueprint > pick this repo.
+# A persistent disk keeps the SQLite database, photos and backups across deploys (needs a paid instance).
+services:
+  - type: web
+    name: vroomate
+    runtime: docker
+    rootDir: web
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: VROOMATE_SECURE_COOKIE
+        value: "1"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: APP_URL
+        sync: false
+      - key: MAIL_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: SMS_API_KEY
+        sync: false
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
