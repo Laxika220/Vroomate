@@ -4,6 +4,7 @@ const cfg = require("./config");
 const { notify } = require("./notify");
 const { route, bad, forbidden, notFound, conflict, send } = require("./http");
 const { publicUser } = require("./users");
+const { reopenRequests } = require("./fulfil");
 
 const int = (v, lo, hi, field) => {
   const n = Number(v);
@@ -12,61 +13,59 @@ const int = (v, lo, hi, field) => {
 };
 const validStop = (id, field) => { if (!cfg.stop(id)) throw bad(`Choose a valid ${field}.`); return id; };
 
-/* ---------- driver verification ---------- */
-route("GET", "/api/driver", ({ res, user }) => {
-  const d = db.prepare("SELECT status, licence_no, id_note, submitted_at, review_note FROM drivers WHERE user_id=?").get(user.id) || null;
-  const vehicles = db.prepare("SELECT id, kind, model, colour, plate, seats, status, review_note FROM vehicles WHERE owner_id=? ORDER BY id DESC").all(user.id);
-  send(res, 200, { driver: d, vehicles });
+/* ---------- vehicles: anyone can offer a ride, no approval step ---------- */
+route("GET", "/api/vehicles", ({ res, user }) => {
+  send(res, 200, { vehicles: db.prepare("SELECT id, kind, model, colour, plate, seats FROM vehicles WHERE owner_id=? ORDER BY id DESC").all(user.id) });
 });
 
-route("POST", "/api/driver", ({ res, user, body }) => {
-  const licence = String(body.licence_no || "").trim().toUpperCase();
-  if (!/^[A-Z0-9 -]{8,20}$/.test(licence)) throw bad("Enter your driving licence number (8-20 letters and digits).");
-  const note = String(body.id_note || "").trim().slice(0, 300);
-  const cur = db.prepare("SELECT status FROM drivers WHERE user_id=?").get(user.id);
-  if (cur && cur.status === "approved") throw conflict("You are already an approved driver.");
-  db.prepare(`INSERT INTO drivers (user_id,status,licence_no,id_note,submitted_at) VALUES (?,?,?,?,?)
-    ON CONFLICT(user_id) DO UPDATE SET status='pending', licence_no=excluded.licence_no, id_note=excluded.id_note, submitted_at=excluded.submitted_at, review_note=''`)
-    .run(user.id, "pending", licence, note, Date.now());
-  for (const a of db.prepare("SELECT id FROM users WHERE is_admin=1").all()) notify(a.id, "admin", "Driver verification submitted", `${user.name} is waiting for review`, "/admin");
-  send(res, 200, { ok: true });
-});
+/** Find the caller's vehicle by plate (updating its details) or add it. */
+function saveVehicle(user, v, minSeats) {
+  const model = String(v.model || "").trim().slice(0, 40), colour = String(v.colour || "").trim().slice(0, 20);
+  const plate = String(v.plate || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (model.length < 2) throw bad("Add your car's model, for example Maruti Swift.");
+  if (colour.length < 2) throw bad("Add your car's colour.");
+  if (!/^[A-Z]{2}\d{1,2}[A-Z]{0,3}\d{1,4}$/.test(plate)) throw bad("Enter the number plate, for example MH12AB1234.");
+  const kind = ["car", "suv", "van", "bike"].includes(v.kind) ? v.kind : "car";
+  const seats = Math.max(minSeats, kind === "bike" ? 1 : 4);
+  const cur = db.prepare("SELECT * FROM vehicles WHERE plate=?").get(plate);
+  if (cur && cur.owner_id !== user.id) throw conflict("That number plate is already registered by someone else.");
+  if (cur) {
+    db.prepare("UPDATE vehicles SET kind=?, model=?, colour=?, seats=MAX(seats,?), status='approved' WHERE id=?").run(kind, model, colour, seats, cur.id);
+    return db.prepare("SELECT * FROM vehicles WHERE id=?").get(cur.id);
+  }
+  const info = db.prepare("INSERT INTO vehicles (owner_id,kind,model,colour,plate,seats,status,created_at) VALUES (?,?,?,?,?,?,'approved',?)").run(user.id, kind, model, colour, plate, seats, Date.now());
+  return db.prepare("SELECT * FROM vehicles WHERE id=?").get(Number(info.lastInsertRowid));
+}
 
 route("POST", "/api/vehicles", ({ res, user, body }) => {
-  if (!db.prepare("SELECT 1 FROM drivers WHERE user_id=?").get(user.id)) throw bad("Submit driver verification first.");
-  const kind = ["car", "suv", "van", "bike"].includes(body.kind) ? body.kind : null;
-  if (!kind) throw bad("Choose a vehicle type.");
-  const model = String(body.model || "").trim().slice(0, 40), colour = String(body.colour || "").trim().slice(0, 20);
-  const plate = String(body.plate || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-  if (model.length < 2 || colour.length < 2) throw bad("Add the vehicle model and colour.");
-  if (!/^[A-Z]{2}\d{1,2}[A-Z]{0,3}\d{4}$/.test(plate)) throw bad("Enter a valid registration number, for example MH12AB1234.");
-  const seats = int(body.seats, 1, kind === "bike" ? 1 : 8, "Passenger seats");
-  if (db.prepare("SELECT 1 FROM vehicles WHERE plate=?").get(plate)) throw conflict("That registration number is already on Vroomate.");
-  const info = db.prepare("INSERT INTO vehicles (owner_id,kind,model,colour,plate,seats,created_at) VALUES (?,?,?,?,?,?,?)").run(user.id, kind, model, colour, plate, seats, Date.now());
-  for (const a of db.prepare("SELECT id FROM users WHERE is_admin=1").all()) notify(a.id, "admin", "Vehicle submitted", `${model} ${plate} from ${user.name}`, "/admin");
-  send(res, 201, { id: Number(info.lastInsertRowid) });
+  send(res, 201, { id: saveVehicle(user, body, int(body.seats || 1, 1, 8, "Seats")).id });
 });
 
 /* ---------- trips ---------- */
-function isApprovedDriver(uid) { const d = db.prepare("SELECT status FROM drivers WHERE user_id=?").get(uid); return !!d && d.status === "approved"; }
-
 route("POST", "/api/trips", ({ res, user, body }) => {
-  if (!isApprovedDriver(user.id)) throw forbidden("You can publish trips once the Vroomate team approves your driver verification.");
-  const v = db.prepare("SELECT * FROM vehicles WHERE id=? AND owner_id=?").get(Number(body.vehicle_id), user.id);
-  if (!v) throw bad("Choose one of your vehicles.");
-  if (v.status !== "approved") throw forbidden("That vehicle is not approved yet.");
   const o = validStop(body.origin_stop, "start"), d = validStop(body.dest_stop, "destination");
   if (o === d) throw bad("Start and destination must be different.");
   const departAt = Number(body.depart_at);
   if (!Number.isFinite(departAt) || departAt < Date.now() + 10 * 60000) throw bad("Pick a departure time at least 10 minutes from now.");
-  if (departAt > Date.now() + 60 * 86400000) throw bad("Trips can be published up to 60 days ahead.");
-  const seats = int(body.seats, 1, v.seats, "Seats offered");
-  const perKm = Number(body.fare_per_km_seat);
-  if (!(perKm >= 0 && perKm <= cfg.cfg.maxFarePerKmInr)) throw bad(`Fare per km must be between 0 and ${cfg.cfg.maxFarePerKmInr} rupees.`);
+  if (departAt > Date.now() + 60 * 86400000) throw bad("Rides can be posted up to 60 days ahead.");
+  const seats = int(body.seats, 1, 8, "Seats");
   const womenOnly = body.women_only ? 1 : 0;
-  if (womenOnly && user.gender !== "f") throw bad("Women-only trips can only be published by women drivers.");
+  if (womenOnly && user.gender !== "f") throw forbidden("Only women can post women-only rides.");
+  const v = body.vehicle ? saveVehicle(user, body.vehicle, seats) : db.prepare("SELECT * FROM vehicles WHERE id=? AND owner_id=?").get(Number(body.vehicle_id), user.id);
+  if (!v) throw bad("Add the car you're driving.");
+  if (seats > v.seats) throw bad(`Your ${v.model} has ${v.seats} passenger seat${v.seats > 1 ? "s" : ""}.`);
+  // Price is entered per seat for the whole route; stored per km so riders joining part-way pay for their distance.
+  const km = cfg.distanceKm(o, d), maxPerKm = cfg.cfg.maxFarePerKmInr;
+  let perKm = Number(body.fare_per_km_seat);
+  if (body.price_per_seat != null) {
+    if (body.price_per_seat === "") throw bad("Set a price per seat. ₹0 is fine if it's free.");
+    const price = Number(body.price_per_seat);
+    if (!(price >= 0 && price <= Math.floor(km * maxPerKm))) throw bad(`Price per seat must be between ₹0 and ₹${Math.floor(km * maxPerKm)} for this route.`);
+    perKm = Math.round((price / km) * 100) / 100;
+  }
+  if (!(perKm >= 0 && perKm <= maxPerKm)) throw bad(`Fare per km must be between 0 and ${maxPerKm} rupees.`);
   const dup = db.prepare("SELECT 1 FROM trips WHERE driver_id=? AND status='open' AND ABS(depart_at-?)<1800000").get(user.id, departAt);
-  if (dup) throw conflict("You already have a trip within 30 minutes of that time.");
+  if (dup) throw conflict("You already have a ride within 30 minutes of that time.");
   const info = db.prepare(`INSERT INTO trips (driver_id,vehicle_id,origin_stop,dest_stop,depart_at,seats_total,seats_available,fare_per_km_seat,notes,women_only,created_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(user.id, v.id, o, d, departAt, seats, seats, perKm, String(body.notes || "").trim().slice(0, 160), womenOnly, Date.now());
   const id = Number(info.lastInsertRowid);
@@ -96,7 +95,9 @@ route("POST", "/api/trips/:id/cancel", ({ res, user, params }) => {
     if (t.status !== "open") throw conflict("This trip is already " + t.status + ".");
     db.prepare("UPDATE trips SET status='cancelled' WHERE id=?").run(t.id);
     const affected = db.prepare("SELECT id,rider_id FROM bookings WHERE trip_id=? AND status IN ('pending','confirmed')").all(t.id);
+    const confirmed = db.prepare("SELECT * FROM bookings WHERE trip_id=? AND status='confirmed'").all(t.id);
     db.prepare("UPDATE bookings SET status='cancelled', updated_at=? WHERE trip_id=? AND status IN ('pending','confirmed')").run(Date.now(), t.id);
+    for (const b of confirmed) reopenRequests(b, t);
     for (const b of affected) notify(b.rider_id, "booking", "Trip cancelled", `${user.name} cancelled the ${cfg.stop(t.origin_stop).short} to ${cfg.stop(t.dest_stop).short} trip.`, "/rides");
   });
   send(res, 200, { ok: true });
@@ -145,4 +146,4 @@ route("POST", "/api/requests/:id/cancel", ({ res, user, params }) => {
   send(res, 200, { ok: true });
 });
 
-module.exports = { isApprovedDriver, tripRow };
+module.exports = { tripRow };

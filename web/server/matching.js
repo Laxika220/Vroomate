@@ -8,16 +8,16 @@ const { publicUser, isBlocked } = require("./users");
 
 const DAY = 86400000;
 
-/** Parse the rider's "need" from query/body with sensible defaults. */
-function parseNeed(q, me) {
-  const home = cfg.stop(me.home_stop) ? me.home_stop : "lavasa-campus";
-  const defFrom = home, defTo = home === "lavasa-campus" ? "pune-station" : "lavasa-campus";
-  const pickup = cfg.stop(q.pickup) ? q.pickup : defFrom;
-  const drop = cfg.stop(q.drop) ? q.drop : defTo;
+/** Parse the rider's search. Pickup and drop are optional: leaving one out means "any stop on the route". */
+function parseNeed(q) {
+  const pickup = cfg.stop(q.pickup) ? q.pickup : null;
+  const drop = cfg.stop(q.drop) ? q.drop : null;
   const earliest = Number(q.earliest) || Date.now();
-  const latest = Number(q.latest) || earliest + 3 * DAY;
+  const latest = Number(q.latest) || earliest + 60 * DAY;
   return { pickup, drop, earliest, latest, seats: Math.min(8, Math.max(1, Number(q.seats) || 1)) };
 }
+/** Fill an open-ended search with the trip's own ends, so every trip that passes the chosen stops qualifies. */
+const legFor = (trip, need) => ({ ...need, pickup: need.pickup || trip.origin_stop, drop: need.drop || trip.dest_stop });
 
 /**
  * Ride feasibility. A trip serves a rider only if:
@@ -25,7 +25,7 @@ function parseNeed(q, me) {
  *  - it runs in the same direction as the rider's leg;
  *  - BOTH pickup and drop lie on the driver's path (no detours are invented);
  *  - the driver reaches the pickup stop inside the rider's time window (plus slack).
- * Returns null when infeasible, else details used for ranking.
+ * Returns null when infeasible, else the pickup ETA and fare.
  */
 function feasible(trip, need) {
   if (trip.status !== "open" || trip.depart_at <= Date.now() || trip.seats_available < need.seats) return null;
@@ -34,10 +34,8 @@ function feasible(trip, need) {
   if (!cfg.onSegment(trip.origin_stop, trip.dest_stop, need.pickup) || !cfg.onSegment(trip.origin_stop, trip.dest_stop, need.drop)) return null;
   const eta = trip.depart_at + cfg.travelMinutes(trip.origin_stop, need.pickup) * 60000;
   if (eta < need.earliest - cfg.slackMs || eta > need.latest + cfg.slackMs) return null;
-  const legKm = cfg.distanceKm(need.pickup, need.drop), tripKm = cfg.distanceKm(trip.origin_stop, trip.dest_stop) || 1;
-  const mid = (need.earliest + need.latest) / 2, off = Math.abs(eta - mid) / 3600000;
-  const score = Math.max(1, Math.min(99, Math.round(55 * (legKm / tripKm) + 45 * Math.max(0, 1 - off / 6))));
-  return { eta, legKm, fare_per_seat: Math.round(trip.fare_per_km_seat * legKm), score };
+  const legKm = cfg.distanceKm(need.pickup, need.drop);
+  return { eta, legKm, fare_per_seat: Math.round(trip.fare_per_km_seat * legKm) };
 }
 
 function genderOk(me, driver, trip) {
@@ -47,7 +45,7 @@ function genderOk(me, driver, trip) {
 }
 
 route("GET", "/api/discover/rides", ({ res, user, query }) => {
-  const need = parseNeed(query, user);
+  const need = parseNeed(query);
   const rows = db.prepare(`SELECT t.* FROM trips t
     WHERE t.status='open' AND t.depart_at > ? AND t.driver_id != ?
       AND t.id NOT IN (SELECT trip_id FROM trip_passes WHERE user_id=?)
@@ -55,18 +53,15 @@ route("GET", "/api/discover/rides", ({ res, user, query }) => {
     ORDER BY t.depart_at LIMIT 300`).all(Date.now(), user.id, user.id, user.id);
   const out = [];
   for (const t of rows) {
-    const f = feasible(t, need); if (!f) continue;
+    const leg = legFor(t, need);
+    const f = feasible(t, leg); if (!f) continue;
     const d = db.prepare("SELECT * FROM users WHERE id=?").get(t.driver_id);
     if (isBlocked(user.id, d.id) || !genderOk(user, d, t)) continue;
-    const dr = db.prepare("SELECT status FROM drivers WHERE user_id=?").get(d.id);
-    if (!dr || dr.status !== "approved") continue;
-    const v = db.prepare("SELECT kind,model,colour,seats FROM vehicles WHERE id=? AND status='approved'").get(t.vehicle_id);
-    if (!v) continue;
+    const v = db.prepare("SELECT kind,model,colour,seats FROM vehicles WHERE id=?").get(t.vehicle_id);
     out.push({ trip: { id: t.id, origin_stop: t.origin_stop, dest_stop: t.dest_stop, depart_at: t.depart_at, seats_available: t.seats_available, seats_total: t.seats_total, notes: t.notes, women_only: !!t.women_only, fare_per_km_seat: t.fare_per_km_seat },
-      driver: publicUser(d), vehicle: v, pickup_eta: f.eta, leg_km: f.legKm, fare_per_seat: f.fare_per_seat, score: f.score });
+      driver: publicUser(d), vehicle: v, pickup: leg.pickup, drop: leg.drop, pickup_eta: f.eta, leg_km: f.legKm, fare_per_seat: f.fare_per_seat });
   }
-  out.sort((a, b) => b.score - a.score || a.trip.depart_at - b.trip.depart_at);
-  send(res, 200, { need, results: out.slice(0, 40) });
+  send(res, 200, { need, results: out.slice(0, 60) });
 });
 
 route("POST", "/api/discover/rides/:id/pass", ({ res, user, params }) => {
@@ -74,8 +69,7 @@ route("POST", "/api/discover/rides/:id/pass", ({ res, user, params }) => {
   send(res, 200, { ok: true });
 });
 
-/* ---------- social matching ---------- */
-const interestsOf = (u) => { try { return JSON.parse(u.interests || "[]"); } catch { return []; } };
+/* ---------- co-riders: people with an open ride request ---------- */
 
 /** Two travellers are compatible if they go the same way, their legs overlap, and their time windows overlap (with slack). */
 function legsCompatible(a, b) {
@@ -90,29 +84,25 @@ function legsCompatible(a, b) {
 }
 
 route("GET", "/api/discover/buddies", ({ res, user, query }) => {
-  const need = parseNeed(query, user);
-  const cands = db.prepare(`SELECT r.*, u.id AS uid FROM ride_requests r JOIN users u ON u.id=r.rider_id
+  const need = parseNeed(query);
+  const cands = db.prepare(`SELECT r.* FROM ride_requests r JOIN users u ON u.id=r.rider_id
     WHERE r.status='open' AND r.latest_at > ? AND r.rider_id != ? AND u.discoverable=1
       AND r.rider_id NOT IN (SELECT target_id FROM swipes WHERE swiper_id=?)
       AND r.rider_id NOT IN (SELECT CASE WHEN user_a=? THEN user_b ELSE user_a END FROM matches WHERE user_a=? OR user_b=?)
     ORDER BY r.earliest_at LIMIT 300`).all(Date.now(), user.id, user.id, user.id, user.id, user.id);
-  const mine = new Set(interestsOf(user)), seen = new Set(), out = [];
+  const seen = new Set(), out = [];
   for (const r of cands) {
     if (seen.has(r.rider_id)) continue;
-    const c = legsCompatible(need, { pickup: r.origin_stop, drop: r.dest_stop, earliest: r.earliest_at, latest: r.latest_at });
+    const c = legsCompatible(legFor({ origin_stop: r.origin_stop, dest_stop: r.dest_stop }, need), { pickup: r.origin_stop, drop: r.dest_stop, earliest: r.earliest_at, latest: r.latest_at });
     if (!c) continue;
     const u = db.prepare("SELECT * FROM users WHERE id=?").get(r.rider_id);
     if (isBlocked(user.id, u.id)) continue;
     if (user.women_only && u.gender !== "f") continue;
     if (u.women_only && user.gender !== "f") continue;
-    const theirs = interestsOf(u), shared = theirs.filter((i) => mine.has(i));
-    const union = new Set([...mine, ...theirs]).size || 1;
-    const score = Math.round(50 * c.share + 25 * Math.max(0, 1 - Math.abs((r.earliest_at + r.latest_at) / 2 - (need.earliest + need.latest) / 2) / (6 * 3600000)) + 25 * (shared.length / union));
     seen.add(r.rider_id);
-    out.push({ user: publicUser(u), request: { id: r.id, origin_stop: r.origin_stop, dest_stop: r.dest_stop, earliest_at: r.earliest_at, latest_at: r.latest_at, seats: r.seats, note: r.note }, shared_interests: shared, shared_km: c.shared, score: Math.max(1, Math.min(99, score)) });
+    out.push({ user: publicUser(u), request: { id: r.id, origin_stop: r.origin_stop, dest_stop: r.dest_stop, earliest_at: r.earliest_at, latest_at: r.latest_at, seats: r.seats, note: r.note }, shared_km: c.shared });
   }
-  out.sort((a, b) => b.score - a.score);
-  send(res, 200, { need, results: out.slice(0, 40) });
+  send(res, 200, { need, results: out.slice(0, 60) });
 });
 
 route("POST", "/api/swipes", ({ res, user, body }) => {
@@ -131,7 +121,7 @@ route("POST", "/api/swipes", ({ res, user, body }) => {
     const info = db.prepare("INSERT INTO matches (user_a,user_b,created_at) VALUES (?,?,?)").run(a, b, Date.now());
     const id = Number(info.lastInsertRowid);
     const conv = ensureConversation("match", id, [a, b]);
-    notify(target, "match", "It's a match", `You and ${user.name} want to travel together. Say hello.`, "/chat/" + conv);
+    notify(target, "match", `You can ride with ${user.name.split(" ")[0]}`, "You both want to travel together. Plan the trip in chat.", "/chat/" + conv);
     return { matched: true, match_id: id, conversation_id: conv };
   });
   send(res, 200, { ...result, user: result.matched ? publicUser(t) : undefined });

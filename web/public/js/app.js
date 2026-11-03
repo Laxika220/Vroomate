@@ -1,60 +1,58 @@
-import { h, icon, toast } from "./ui.js";
+import { h, icon } from "./ui.js";
 import { get } from "./api.js";
 import { state, views, nav, refreshMe } from "./core.js";
 import "./views/auth.js";
+import "./views/home.js";
+import "./views/offer.js";
+import "./views/rides.js";
+import "./views/inbox.js";
+import "./views/chat.js";
 import "./views/profile.js";
-const optional = ["post", "drive", "admin", "discover", "matches", "rides", "chat", "radar", "notifications", "safety"];
-for (const v of optional) { try { await import(`./views/${v}.js`); } catch (e) { if (!/Failed to fetch|Cannot find|error loading|404/i.test(String(e.message))) console.error(v, e); } }
+import "./views/notifications.js";
+import "./views/safety.js";
+import "./views/admin.js";
 
 const root = document.getElementById("app");
 const screen = h("main", { id: "screen" });
 const tabbar = h("div", { class: "tabbar", hidden: true });
 root.append(screen, tabbar);
 
-const TABS = [
-  ["discover", "Discover", "compass"], ["matches", "Matches", "heart"], ["post", "Post", "plus"],
-  ["rides", "My Rides", "route"], ["profile", "Profile", "user"],
-];
+const TABS = [["home", "Home", "home"], ["offer", "Offer", "plus"], ["rides", "Trips", "route"], ["inbox", "Inbox", "chat"], ["profile", "Account", "user"]];
+// Older links (notifications, bookmarks) point at screens that were merged.
+const ALIAS = { discover: "home", radar: "home", matches: "inbox", post: "offer", drive: "offer" };
+
 function drawTabs(active) {
-  tabbar.replaceChildren(h("nav", { "aria-label": "Main" }, TABS.map(([id, label, ic]) => {
-    const isPost = id === "post";
-    const badge = id === "matches" && state.badges.matches > 0 ? h("span", { class: "dot" }, state.badges.matches) : null;
-    return h("a", { href: "#/" + id, class: "tab" + (isPost ? " post" : ""), "aria-current": active === id ? "page" : null, "aria-label": label },
-      isPost ? h("span", { class: "fab" }, icon(ic)) : icon(ic), h("span", null, label), badge);
-  })));
+  const dot = { inbox: state.badges.matches > 0, rides: state.badges.rides > 0 };
+  tabbar.replaceChildren(h("nav", { "aria-label": "Main" }, TABS.map(([id, label, ic]) =>
+    h("a", { href: "#/" + id, class: "tab", "aria-current": active === id ? "page" : null }, icon(ic), h("span", null, label), dot[id] && h("span", { class: "dot", "aria-label": "new" })))));
 }
 
 let renderToken = 0;
 async function route() {
   const token = ++renderToken;
   const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean);
-  let name = parts[0] || "discover";
+  let name = ALIAS[parts[0]] || parts[0] || "home";
   const arg = parts[1];
-  let flow = null;
-  if (!state.me) flow = "welcome";
-  else if (!state.me.email_verified && (state.me.role === "student" || state.me.role === "faculty")) flow = "verify";
-  else if (!state.me.home_stop && !sessionStorage.getItem("vm_skip_setup")) flow = "setup";
-  if (flow) name = flow;
+  if (!state.me) name = "welcome";
   const view = views[name] || views.notfound;
-  screen.replaceChildren(h("div", { class: "skeleton", style: { minHeight: "50vh" } }));
+  screen.replaceChildren(h("div", { class: "skeleton", style: { minHeight: "40vh" } }));
   let out;
   try { out = await view(arg, { go: nav }); }
   catch (e) {
     if (e.status === 401) { state.me = null; return route(); }
-    out = { node: h("div", { class: "empty" }, h("h3", null, "That didn't load"), h("p", null, e.message || "Try again."), h("button", { class: "btn primary", onclick: route }, "Retry")) };
+    out = h("div", { class: "empty" }, h("h3", null, "Couldn't load this"), h("p", null, e.message || "Try again."), h("button", { class: "btn primary", onclick: route }, "Retry"));
   }
   if (token !== renderToken) return;
   const node = out.node || out;
-  const bare = !!out.bare || !!flow;
+  const bare = !!out.bare;
   screen.className = bare ? "bare" : "";
   screen.replaceChildren(...(Array.isArray(node) ? node : [node]));
   window.scrollTo(0, 0);
   tabbar.hidden = bare;
-  if (!bare) drawTabs(name === "chat" ? "matches" : name);
-  document.title = "Vroomate";
+  if (!bare) drawTabs(name === "chat" ? "inbox" : name);
 }
 
-views.notfound = async () => h("div", { class: "empty" }, h("h3", null, "Page not found"), h("a", { class: "btn primary", href: "#/discover" }, "Go to Discover"));
+views.notfound = async () => h("div", { class: "empty" }, h("h3", null, "Page not found"), h("a", { class: "btn primary", href: "#/home" }, "Go home"));
 
 window.addEventListener("hashchange", route);
 window.addEventListener("vm:session", async () => { await refreshMe(); route(); });
@@ -65,6 +63,6 @@ window.addEventListener("vm:session", async () => { await refreshMe(); route(); 
   route();
   setInterval(async () => {
     if (!state.me || document.hidden) return;
-    try { const r = await get("/api/badges"); state.badges = r; if (!tabbar.hidden) drawTabs((location.hash.split("/")[1] || "discover")); } catch { /* ignore */ }
+    try { state.badges = await get("/api/badges"); if (!tabbar.hidden) drawTabs(tabbar.querySelector("[aria-current]")?.getAttribute("href").slice(2)); } catch { /* ignore */ }
   }, 20000);
 })();

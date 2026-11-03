@@ -40,20 +40,4 @@ function throttled(key) { const f = fails.get(key); return !!f && f.n >= 8 && Da
 function noteFail(key) { const f = fails.get(key); if (!f || Date.now() - f.t > 600000) fails.set(key, { n: 1, t: Date.now() }); else f.n++; }
 function clearFails(key) { fails.delete(key); }
 
-function newCode(userId) {
-  const code = String(crypto.randomInt(0, 1000000)).padStart(6, "0");
-  db.prepare("INSERT OR REPLACE INTO email_codes (user_id, code_hash, expires_at, attempts) VALUES (?,?,?,0)").run(userId, sha(code), Date.now() + 15 * 60000);
-  return code;
-}
-function checkCode(userId, code) {
-  const row = db.prepare("SELECT * FROM email_codes WHERE user_id = ?").get(userId);
-  if (!row || row.expires_at < Date.now()) throw new HttpError(400, "That code has expired. Request a new one.");
-  if (row.attempts >= 5) throw new HttpError(429, "Too many wrong codes. Request a new one.");
-  if (sha(String(code).trim()) !== row.code_hash) {
-    db.prepare("UPDATE email_codes SET attempts = attempts + 1 WHERE user_id = ?").run(userId);
-    throw new HttpError(400, "That code is not right.");
-  }
-  db.prepare("DELETE FROM email_codes WHERE user_id = ?").run(userId);
-}
-
-module.exports = { hashPassword, checkPassword, createSession, userFromToken, destroySession, cookie, throttled, noteFail, clearFails, newCode, checkCode };
+module.exports = { hashPassword, checkPassword, createSession, userFromToken, destroySession, cookie, throttled, noteFail, clearFails };

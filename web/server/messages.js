@@ -20,12 +20,27 @@ function otherMembers(convId, uid) {
 function title(conv, uid) {
   if (conv.kind === "group") return (db.prepare("SELECT name FROM groups WHERE id=?").get(conv.ref_id) || {}).name || "Group";
   const names = otherMembers(conv.id, uid).map((id) => db.prepare("SELECT name FROM users WHERE id=?").get(id).name.split(" ")[0]);
-  return conv.kind === "booking" ? "Ride chat: " + names.join(", ") : names.join(", ");
+  return names.join(", ");
 }
 function checkAccess(conv, uid) {
   if (!conv || !memberOf(conv.id, uid)) throw notFound("Conversation not found");
   if (conv.kind !== "group") for (const o of otherMembers(conv.id, uid)) if (isBlocked(uid, o)) throw forbidden("You can't message this person.");
 }
+
+route("GET", "/api/conversations", ({ res, user }) => {
+  const rows = db.prepare(`SELECT c.*, cm.last_read_id FROM conversations c JOIN conversation_members cm ON cm.conversation_id=c.id AND cm.user_id=?`).all(user.id);
+  const out = [];
+  for (const c of rows) {
+    const others = otherMembers(c.id, user.id);
+    if (c.kind !== "group" && others.some((o) => isBlocked(user.id, o))) continue;
+    const last = db.prepare("SELECT body, sender_id, created_at FROM messages WHERE conversation_id=? ORDER BY id DESC LIMIT 1").get(c.id) || null;
+    const unread = db.prepare("SELECT COUNT(*) n FROM messages WHERE conversation_id=? AND sender_id!=? AND id>?").get(c.id, user.id, c.last_read_id).n;
+    const first = others.length ? db.prepare("SELECT * FROM users WHERE id=?").get(others[0]) : null;
+    out.push({ id: c.id, kind: c.kind, title: title(c, user.id), person: first ? publicUser(first) : null, last_message: last, unread, at: last ? last.created_at : c.created_at });
+  }
+  out.sort((a, b) => b.at - a.at);
+  send(res, 200, { conversations: out.slice(0, 100) });
+});
 
 route("GET", "/api/conversations/:id", ({ res, user, params, query }) => {
   const conv = db.prepare("SELECT * FROM conversations WHERE id=?").get(Number(params.id));

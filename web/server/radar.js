@@ -83,11 +83,11 @@ function onTripPublished(tripId) {
     const rider = db.prepare("SELECT * FROM users WHERE id=?").get(r.rider_id);
     if (isBlocked(rider.id, driver.id) || !genderOk(rider, driver, t)) continue;
     notified.add(r.rider_id);
-    notify(r.rider_id, "radar", "A trip matches your request", `${stopLabel(t.origin_stop)} to ${stopLabel(t.dest_stop)}, ${t.seats_available} seat${t.seats_available > 1 ? "s" : ""} left. Open Discover to request one.`, "/discover");
+    notify(r.rider_id, "radar", "A trip matches your request", `${stopLabel(t.origin_stop)} to ${stopLabel(t.dest_stop)}, ${t.seats_available} seat${t.seats_available > 1 ? "s" : ""} left. Open Home to request one.`, "/home");
   }
 }
 
-/** A request was posted: if enough unserved riders now share a trip, alert approved drivers once per cluster and hour. */
+/** A request was posted: if enough unserved riders now share a trip, alert recent drivers once per cluster and hour. */
 function onRequestPosted(reqId) {
   const r = db.prepare("SELECT * FROM ride_requests WHERE id=?").get(reqId);
   const trips = openTrips();
@@ -97,10 +97,10 @@ function onRequestPosted(reqId) {
   const sig = signature(c);
   if (db.prepare("SELECT 1 FROM radar_alerts WHERE sig=?").get(sig)) return;
   db.prepare("INSERT INTO radar_alerts (sig,created_at) VALUES (?,?)").run(sig, Date.now());
-  const driversToTell = db.prepare("SELECT d.user_id FROM drivers d WHERE d.status='approved'").all();
+  const driversToTell = db.prepare("SELECT DISTINCT driver_id FROM trips WHERE created_at > ?").all(Date.now() - 60 * 86400000);
   for (const d of driversToTell) {
-    if (c.riders.has(d.user_id)) continue;
-    notify(d.user_id, "radar", `${c.riders.size} riders need ${stopLabel(c.from)} to ${stopLabel(c.to)}`, `${c.seats} seat${c.seats > 1 ? "s" : ""} wanted around the same time. Publish a trip to fill them.`, "/radar");
+    if (c.riders.has(d.driver_id)) continue;
+    notify(d.driver_id, "radar", `${c.riders.size} riders need ${stopLabel(c.from)} to ${stopLabel(c.to)}`, `${c.seats} seat${c.seats > 1 ? "s" : ""} wanted around the same time. Offer a ride to fill them.`, "/offer");
   }
 }
 

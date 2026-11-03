@@ -11,8 +11,8 @@ const request = (c, o = {}) => c.post("/api/requests", { origin_stop: "pune-stat
 const buddies = (c, q = {}) => c.get("/api/discover/buddies?" + new URLSearchParams({ pickup: "pune-station", drop: "lavasa-campus", earliest: H.inHours(0), latest: H.inHours(24), ...q }));
 
 test("buddy discovery only shows travellers whose route and time overlap", async () => {
-  const me = await H.account("student", { interests: ["Music", "Hiking"] });
-  const match = await H.account("student", { interests: ["Music", "Books"] });
+  const me = await H.account("student");
+  const match = await H.account("student");
   const wrongWay = await H.account("student");
   const wrongTime = await H.account("student");
   const noRequest = await H.account("student");
@@ -26,7 +26,7 @@ test("buddy discovery only shows travellers whose route and time overlap", async
   assert.ok(!ids.includes(wrongTime.user.id), "non-overlapping time excluded");
   assert.ok(!ids.includes(noRequest.user.id), "people without a request aren't shown");
   const card = (await buddies(me)).results.find((r) => r.user.id === match.user.id);
-  assert.deepEqual(card.shared_interests, ["Music"]);
+  assert.equal(card.shared_km, 57, "Kothrud to Lavasa is shared");
   assert.equal(card.user.email, undefined, "email is never exposed");
 });
 
@@ -93,8 +93,9 @@ test("women-only settings are respected in both directions", async () => {
   assert.equal((await man2.call("POST", "/api/trips", { vehicle_id: 1, origin_stop: "lavasa-campus", dest_stop: "pune-station", depart_at: H.inHours(3), seats: 1, fare_per_km_seat: 2, women_only: true })).status, 403);
 });
 
-test("Ride Radar: demand without drivers alerts approved drivers once; a published trip alerts the riders", async () => {
+test("Ride Radar: demand without drivers alerts recent drivers once; a published trip alerts the riders", async () => {
   const d = await H.approvedDriver(admin);
+  await d.post("/api/trips", { vehicle_id: d.vehicleId, origin_stop: "lavasa-campus", dest_stop: "pune-station", depart_at: H.inHours(50), seats: 1, fare_per_km_seat: 2 });   // has offered a ride before
   const riders = [await H.account("student"), await H.account("student"), await H.account("student")];
   const win = { earliest_at: H.inHours(30), latest_at: H.inHours(32) };
   for (const r of riders) await request(r, win);

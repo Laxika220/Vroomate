@@ -6,6 +6,7 @@ const { ensureConversation } = require("./conv");
 const { feasible, genderOk } = require("./matching");
 const { route, bad, forbidden, notFound, conflict, send } = require("./http");
 const { publicUser, isBlocked } = require("./users");
+const { fulfilRequests, reopenRequests } = require("./fulfil");
 
 const stopLabel = (id) => (cfg.stop(id) ? cfg.stop(id).short : id);
 const legText = (t) => `${stopLabel(t.origin_stop)} to ${stopLabel(t.dest_stop)}`;
@@ -77,6 +78,7 @@ route("POST", "/api/bookings/:id/respond", ({ res, user, params, body }) => {
     const r = db.prepare("UPDATE trips SET seats_available = seats_available - ? WHERE id=? AND status='open' AND seats_available >= ?").run(b.seats, t.id, b.seats);
     if (r.changes !== 1) throw conflict("Not enough seats left for this request. Decline it or ask the rider to change seats.");
     db.prepare("UPDATE bookings SET status='confirmed', updated_at=? WHERE id=?").run(Date.now(), b.id);
+    fulfilRequests(b, t);
     for (const w of who) notify(w, "booking", "Seat confirmed", `${user.name} confirmed your seat on the ${legText(t)} trip.`, "/rides");
   });
   send(res, 200, { ok: true });
@@ -91,8 +93,11 @@ route("POST", "/api/bookings/:id/cancel", ({ res, user, params }) => {
     if (!byDriver && !byRider) throw forbidden("Not your booking.");
     if (!["pending", "confirmed"].includes(b.status)) throw conflict("This booking is already " + b.status + ".");
     if (t.depart_at <= Date.now() && b.status === "confirmed") throw conflict("The trip has already departed.");
-    if (b.status === "confirmed") db.prepare("UPDATE trips SET seats_available = seats_available + ? WHERE id=?").run(b.seats, t.id);
     db.prepare("UPDATE bookings SET status='cancelled', updated_at=? WHERE id=?").run(Date.now(), b.id);
+    if (b.status === "confirmed") {
+      db.prepare("UPDATE trips SET seats_available = seats_available + ? WHERE id=?").run(b.seats, t.id);
+      reopenRequests(b, t);
+    }
     if (byDriver) for (const w of travellers(b)) notify(w, "booking", "Booking cancelled by driver", `${user.name} cancelled your seat on the ${legText(t)} trip.`, "/rides");
     else notify(t.driver_id, "booking", "Rider cancelled", `${user.name} cancelled ${b.seats} seat${b.seats > 1 ? "s" : ""}.`, "/rides");
   });

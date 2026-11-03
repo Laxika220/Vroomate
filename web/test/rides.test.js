@@ -10,22 +10,32 @@ after(() => H.stop());
 const publish = (d, o = {}) => d.post("/api/trips", { vehicle_id: d.vehicleId, origin_stop: "lavasa-campus", dest_stop: "pune-station", depart_at: H.inHours(3), seats: 3, fare_per_km_seat: 2.5, ...o });
 const find = (rider, q) => rider.get("/api/discover/rides?" + new URLSearchParams(q).toString());
 
-test("unapproved drivers cannot publish trips", async () => {
-  const d = await H.account("driver");
-  const r = await d.call("POST", "/api/trips", { vehicle_id: 1, origin_stop: "lavasa-campus", dest_stop: "pune-station", depart_at: H.inHours(3), seats: 1, fare_per_km_seat: 2 });
-  assert.equal(r.status, 403);
+test("anyone can offer a ride by entering their car, with the price set per seat", async () => {
+  const d = await H.account("community");
+  const t = await d.post("/api/trips", { origin_stop: "lavasa-campus", dest_stop: "pune-station", depart_at: H.inHours(3), seats: 3, price_per_seat: 165,
+    vehicle: { model: "Hyundai i20", colour: "Red", plate: "MH14XY4321" } });
+  const mine = (await d.get("/api/trips/mine")).trips.find((x) => x.id === t.id);
+  assert.equal(mine.vehicle.model, "Hyundai i20");
+  assert.equal(Math.round(mine.fare_per_km_seat * 66), 165);
+  const other = await H.account("community");
+  const r = await other.call("POST", "/api/trips", { origin_stop: "lavasa-campus", dest_stop: "pune-station", depart_at: H.inHours(5), seats: 1, price_per_seat: 100,
+    vehicle: { model: "Swift", colour: "Blue", plate: "MH14XY4321" } });
+  assert.equal(r.status, 409, "someone else's plate is refused");
+  const tooDear = await d.call("POST", "/api/trips", { origin_stop: "lavasa-campus", dest_stop: "pune-station", depart_at: H.inHours(8), seats: 1, price_per_seat: 9999, vehicle_id: mine.vehicle_id });
+  assert.equal(tooDear.status, 400);
 });
 
-test("pending vehicle blocks publishing; approved vehicle allows it", async () => {
-  const d = await H.account("driver");
-  await d.post("/api/driver", { licence_no: "MH1420190009999" });
-  await admin.post(`/api/admin/drivers/${d.user.id}`, { decision: "approve" });
-  const v = await d.post("/api/vehicles", { kind: "car", model: "Hyundai i20", colour: "Red", plate: "MH14XY4321", seats: 4 });
-  const r = await d.call("POST", "/api/trips", { vehicle_id: v.id, origin_stop: "lavasa-campus", dest_stop: "pune-station", depart_at: H.inHours(3), seats: 2, fare_per_km_seat: 2 });
-  assert.equal(r.status, 403);
-  await admin.post(`/api/admin/vehicles/${v.id}`, { decision: "approve" });
-  const ok = await d.call("POST", "/api/trips", { vehicle_id: v.id, origin_stop: "lavasa-campus", dest_stop: "pune-station", depart_at: H.inHours(3), seats: 2, fare_per_km_seat: 2 });
-  assert.equal(ok.status, 201);
+test("a new ride becomes a swipe card for everyone, with no search needed", async () => {
+  const d = await H.approvedDriver(admin);
+  const t = await publish(d, { origin_stop: "pune-station", dest_stop: "mulshi", depart_at: H.inHours(24 * 20) });
+  const rider = await H.account("community");
+  const all = await rider.get("/api/discover/rides");
+  const card = all.results.find((r) => r.trip.id === t.id);
+  assert.ok(card, "visible with no filters, even weeks ahead");
+  assert.equal(card.pickup, "pune-station"); assert.equal(card.drop, "mulshi");
+  assert.ok(!(await d.get("/api/discover/rides")).results.some((r) => r.trip.id === t.id), "drivers don't see their own ride");
+  assert.ok((await find(rider, { drop: "paud" })).results.some((r) => r.trip.id === t.id), "only a drop-off chosen: the ride passes Paud");
+  assert.ok(!(await find(rider, { pickup: "mulshi", drop: "pune-station" })).results.some((r) => r.trip.id === t.id), "wrong direction excluded");
 });
 
 test("only feasible routes are recommended (direction, segment and pickup time)", async () => {
@@ -101,7 +111,7 @@ test("cancelling a confirmed booking returns the seats; a full trip disappears f
 test("group booking takes one seat per joined member and needs a real group", async () => {
   const d = await H.approvedDriver(admin);
   const t = await publish(d, { seats: 3 });
-  const [a, b, c] = [await H.account("student", { interests: ["Music"] }), await H.account("student", { interests: ["Music"] }), await H.account("student", { interests: ["Music"] })];
+  const [a, b, c] = [await H.account("student"), await H.account("student"), await H.account("student")];
   // make matches a-b and a-c through mutual likes
   for (const other of [b, c]) { await a.post("/api/swipes", { target_id: other.user.id, direction: "like" }); const r = await other.post("/api/swipes", { target_id: a.user.id, direction: "like" }); assert.equal(r.matched, true); }
   const g = await a.post("/api/groups", { name: "Weekend crew", invite: [b.user.id, c.user.id] });
@@ -141,4 +151,25 @@ test("plates and contact details stay private until a booking is confirmed", asy
   await d.post(`/api/bookings/${b.id}/respond`, { decision: "accept" });
   row = (await rider.get("/api/bookings/mine")).bookings.find((x) => x.id === b.id);
   assert.equal(row.driver_phone, "+91 98765 43210"); assert.match(row.vehicle.plate, /^MH12AB/);
+});
+
+test("once the driver confirms a rider, their request leaves the Co-riders deck, and returns if the seat is cancelled", async () => {
+  const d = await H.approvedDriver(admin);
+  const rider = await H.account("community"), viewer = await H.account("community");
+  await rider.post("/api/requests", { origin_stop: "lavasa-campus", dest_stop: "pune-station", earliest_at: H.inHours(30), latest_at: H.inHours(33), seats: 1 });
+  const inDeck = async () => (await viewer.get("/api/discover/buddies")).results.some((c) => c.user.id === rider.user.id);
+  assert.ok(await inDeck(), "open request is a card");
+  const t = await publish(d, { depart_at: H.inHours(31) });
+  const b = await rider.post("/api/bookings", { trip_id: t.id, pickup_stop: "lavasa-campus", drop_stop: "pune-station" });
+  assert.ok(await inDeck(), "a pending request alone doesn't remove the card");
+  await d.post(`/api/bookings/${b.id}/respond`, { decision: "accept" });
+  assert.ok(!(await inDeck()), "confirmed: card gone");
+  assert.equal((await rider.get("/api/requests/mine")).requests.length, 0);
+  await rider.post(`/api/bookings/${b.id}/cancel`);
+  assert.ok(await inDeck(), "seat cancelled: card is back");
+  const b2 = await rider.post("/api/bookings", { trip_id: t.id, pickup_stop: "lavasa-campus", drop_stop: "pune-station" });
+  await d.post(`/api/bookings/${b2.id}/respond`, { decision: "accept" });
+  assert.ok(!(await inDeck()));
+  await d.post(`/api/trips/${t.id}/cancel`);
+  assert.ok(await inDeck(), "driver cancelled the trip: card is back");
 });

@@ -8,7 +8,6 @@ const A = require("./auth");
 const { route, bad, notFound, send, HttpError } = require("./http");
 
 const UPLOADS = process.env.VROOMATE_UPLOADS || path.join(__dirname, "..", "data", "uploads");
-const DEV_CODES = process.env.NODE_ENV !== "production" && process.env.VROOMATE_DEV_CODES !== "0";
 const ROLES = ["student", "faculty", "driver", "community"];
 
 const str = (v, max, field) => {
@@ -23,21 +22,14 @@ function isBlocked(a, b) {
 
 /** Fields safe to show other people. Never email, phone or password. */
 function publicUser(u) {
-  const drv = db.prepare("SELECT status FROM drivers WHERE user_id=?").get(u.id);
   return {
-    id: u.id, name: u.name, role: u.role, gender: u.gender, bio: u.bio, course: u.course,
-    interests: JSON.parse(u.interests || "[]"), home_stop: u.home_stop,
+    id: u.id, name: u.name, role: u.role, gender: u.gender, bio: u.bio, home_stop: u.home_stop,
     photo: u.photo ? `/uploads/${u.photo}` : null,
-    verified: !!u.email_verified && (u.role === "student" || u.role === "faculty"),
-    driver_approved: drv ? drv.status === "approved" : false,
   };
 }
 function selfUser(u) {
-  const drv = db.prepare("SELECT status, review_note FROM drivers WHERE user_id=?").get(u.id);
   return {
-    ...publicUser(u), email: u.email, phone: u.phone, women_only: !!u.women_only, discoverable: !!u.discoverable,
-    is_admin: !!u.is_admin, email_verified: !!u.email_verified,
-    driver: drv ? { status: drv.status, note: drv.review_note } : null,
+    ...publicUser(u), email: u.email, phone: u.phone, women_only: !!u.women_only, discoverable: !!u.discoverable, is_admin: !!u.is_admin,
     unread_notifications: db.prepare("SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read_at IS NULL").get(u.id).n,
   };
 }
@@ -49,29 +41,20 @@ route("GET", "/api/config", { auth: false }, ({ res }) => send(res, 200, cfg.pub
 route("POST", "/api/auth/signup", { auth: false }, ({ res, body }) => {
   const email = str(body.email, 120, "Email").toLowerCase();
   const name = str(body.name, 60, "Name");
-  const role = String(body.role || "");
+  const role = ROLES.includes(body.role) ? body.role : "community";   // anyone in Lavasa can join; role is informational only
   const password = String(body.password || "");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw bad("Enter a valid email address.");
   if (name.length < 2) throw bad("Enter your name.");
-  if (!ROLES.includes(role)) throw bad("Choose an account type.");
   if (password.length < 8) throw bad("Password needs at least 8 characters.");
-  const domain = email.split("@")[1];
-  const college = cfg.allowedDomains.some((d) => domain === d || domain.endsWith("." + d));
-  if ((role === "student" || role === "faculty") && !college)
-    throw bad(`Students and faculty sign up with their CHRIST email (ending in ${cfg.allowedDomains[0]}).`);
+  const phone = str(body.phone, 20, "Phone");
+  if (phone && !/^[0-9+\-\s]{7,20}$/.test(phone)) throw bad("Phone number looks wrong.");
   if (db.prepare("SELECT 1 FROM users WHERE email=?").get(email)) throw new HttpError(409, "That email already has an account. Log in instead.");
   const gender = ["f", "m", "x"].includes(body.gender) ? body.gender : "x";
-  const info = db.prepare("INSERT INTO users (email,password_hash,name,role,gender,created_at) VALUES (?,?,?,?,?,?)")
-    .run(email, A.hashPassword(password), name, role, gender, Date.now());
+  const info = db.prepare("INSERT INTO users (email,password_hash,name,role,gender,phone,created_at) VALUES (?,?,?,?,?,?,?)")
+    .run(email, A.hashPassword(password), name, role, gender, phone || null, Date.now());
   const id = Number(info.lastInsertRowid);
-  let devCode;
-  if (college) {
-    const code = A.newCode(id);
-    console.log(`[verify] code for ${email}: ${code}`);   // no mail provider configured: see README
-    if (DEV_CODES) devCode = code;
-  }
   setSession(res, A.createSession(id));
-  send(res, 201, { user: selfUser(db.prepare("SELECT * FROM users WHERE id=?").get(id)), needs_verification: college, dev_code: devCode });
+  send(res, 201, { user: selfUser(db.prepare("SELECT * FROM users WHERE id=?").get(id)) });
 });
 
 route("POST", "/api/auth/login", { auth: false }, ({ req, res, body }) => {
@@ -91,34 +74,18 @@ route("POST", "/api/auth/logout", { auth: false }, ({ res, token }) => {
   send(res, 200, { ok: true });
 });
 
-route("POST", "/api/auth/resend", ({ res, user }) => {
-  if (user.email_verified) throw bad("Your email is already verified.");
-  if (!(user.role === "student" || user.role === "faculty")) throw bad("Only CHRIST accounts need email verification.");
-  const code = A.newCode(user.id);
-  console.log(`[verify] code for ${user.email}: ${code}`);
-  send(res, 200, { ok: true, dev_code: DEV_CODES ? code : undefined });
-});
-
-route("POST", "/api/auth/verify", ({ res, user, body }) => {
-  if (user.email_verified) return send(res, 200, { user: selfUser(user) });
-  A.checkCode(user.id, body.code);
-  db.prepare("UPDATE users SET email_verified=1 WHERE id=?").run(user.id);
-  send(res, 200, { user: selfUser(db.prepare("SELECT * FROM users WHERE id=?").get(user.id)) });
-});
-
 route("GET", "/api/me", ({ res, user }) => send(res, 200, { user: selfUser(user) }));
 
 route("PUT", "/api/me", ({ res, user, body }) => {
   const stopIds = cfg.stops.map((s) => s.id);
-  const interests = (Array.isArray(body.interests) ? body.interests : []).filter((i) => cfg.cfg.interests.includes(i)).slice(0, 6);
   if (body.home_stop && !stopIds.includes(body.home_stop)) throw bad("Pick a stop from the list.");
   const phone = str(body.phone, 20, "Phone");
   if (phone && !/^[0-9+\-\s]{7,20}$/.test(phone)) throw bad("Phone number looks wrong.");
   const name = str(body.name ?? user.name, 60, "Name");
   if (name.length < 2) throw bad("Enter your name.");
-  db.prepare(`UPDATE users SET name=?, bio=?, interests=?, home_stop=?, gender=?, course=?, women_only=?, discoverable=?, phone=? WHERE id=?`)
-    .run(name, str(body.bio, 160, "Bio"), JSON.stringify(interests), body.home_stop || null,
-      ["f", "m", "x"].includes(body.gender) ? body.gender : user.gender, str(body.course, 40, "Course"),
+  db.prepare(`UPDATE users SET name=?, bio=?, home_stop=?, gender=?, women_only=?, discoverable=?, phone=? WHERE id=?`)
+    .run(name, str(body.bio, 160, "Bio"), body.home_stop || null,
+      ["f", "m", "x"].includes(body.gender) ? body.gender : user.gender,
       body.women_only ? 1 : 0, body.discoverable === false ? 0 : 1, phone || null, user.id);
   send(res, 200, { user: selfUser(db.prepare("SELECT * FROM users WHERE id=?").get(user.id)) });
 });

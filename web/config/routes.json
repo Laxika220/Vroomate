@@ -16,7 +16,5 @@
     { "id": "deccan",        "name": "Deccan Gymkhana",                "short": "Deccan",        "km": 61, "min": 110, "kind": "pune" },
     { "id": "shivajinagar",  "name": "Shivajinagar",                   "short": "Shivajinagar",  "km": 63, "min": 115, "kind": "pune" },
     { "id": "pune-station",  "name": "Pune Railway Station",           "short": "Pune Station",  "km": 66, "min": 125, "kind": "pune" }
-  ],
-  "interests": ["Music", "Podcasts", "Cricket", "Football", "Hiking", "Photography", "Gaming", "Books", "Food", "Startups", "Fitness", "Movies"],
-  "allowedEmailDomains": ["christuniversity.in"]
+  ]
 }

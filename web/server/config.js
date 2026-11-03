@@ -41,10 +41,7 @@ module.exports = {
   publicConfig: () => ({
     corridorName: cfg.corridorName,
     stops,
-    interests: cfg.interests,
     suggestedFarePerKmInr: cfg.suggestedFarePerKmInr,
     maxFarePerKmInr: cfg.maxFarePerKmInr,
-    allowedEmailDomains: cfg.allowedEmailDomains,
   }),
-  allowedDomains: cfg.allowedEmailDomains.map((d) => d.toLowerCase()),
 };

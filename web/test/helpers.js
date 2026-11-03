@@ -38,27 +38,21 @@ class Client {
 }
 
 let n = 0;
-/** Create a verified account of the given role. */
+/** Create an account. Anyone can sign up with any email; no verification step. */
 async function account(role, extra = {}) {
   n++;
   const c = new Client();
-  const college = role === "student" || role === "faculty";
-  const email = `${role}${n}@${college ? "mba.christuniversity.in" : "example.com"}`;
-  const r = await c.post("/api/auth/signup", { email, password: "password123", name: extra.name || `${role[0].toUpperCase() + role.slice(1)} ${n}`, role, gender: extra.gender || "x" });
-  if (r.needs_verification) await c.post("/api/auth/verify", { code: r.dev_code });
+  await c.post("/api/auth/signup", { email: `user${n}@example.com`, password: "password123", name: extra.name || `${role[0].toUpperCase() + role.slice(1)} ${n}`, gender: extra.gender || "x" });
   c.user = (await c.get("/api/me")).user;
-  if (extra.home_stop || extra.interests) await c.ok("PUT", "/api/me", { ...c.user, home_stop: extra.home_stop || null, interests: extra.interests || [] });
+  if (extra.home_stop) await c.ok("PUT", "/api/me", { ...c.user, home_stop: extra.home_stop });
   return c;
 }
 const makeAdmin = (c) => db.prepare("UPDATE users SET is_admin=1 WHERE id=?").run(c.user.id);
 
-/** A fully approved driver with one approved vehicle. */
-async function approvedDriver(admin, extra = {}) {
+/** Someone who offers rides, with one car. No approval is needed. */
+async function approvedDriver(_admin, extra = {}) {
   const d = await account("driver", extra);
-  await d.post("/api/driver", { licence_no: "MH1420190001234" });
-  await admin.post(`/api/admin/drivers/${d.user.id}`, { decision: "approve" });
   const v = await d.post("/api/vehicles", { kind: "car", model: "Maruti Swift", colour: "White", plate: `MH12AB${String(1000 + n).slice(-4)}`, seats: extra.seats || 4 });
-  await admin.post(`/api/admin/vehicles/${v.id}`, { decision: "approve" });
   d.vehicleId = v.id;
   return d;
 }
