@@ -5,6 +5,7 @@ const { notify } = require("./notify");
 const { route, bad, forbidden, notFound, conflict, send } = require("./http");
 const { publicUser, requireVerifiedPhone } = require("./users");
 const { reopenRequests } = require("./fulfil");
+const { rated, canRate } = require("./ratings");
 
 const int = (v, lo, hi, field) => {
   const n = Number(v);
@@ -82,8 +83,9 @@ function tripRow(t) {
 route("GET", "/api/trips/mine", ({ res, user }) => {
   const rows = db.prepare("SELECT * FROM trips WHERE driver_id=? ORDER BY depart_at DESC LIMIT 60").all(user.id);
   const out = rows.map((t) => {
-    const bookings = db.prepare("SELECT id,rider_id,group_id,seats,pickup_stop,drop_stop,fare_total,status FROM bookings WHERE trip_id=? AND status IN ('pending','confirmed') ORDER BY id").all(t.id)
-      .map((b) => ({ ...b, rider: publicUser(db.prepare("SELECT * FROM users WHERE id=?").get(b.rider_id)) }));
+    const bookings = db.prepare("SELECT id,rider_id,group_id,seats,pickup_stop,drop_stop,fare_total,status,updated_at FROM bookings WHERE trip_id=? AND status IN ('pending','confirmed','completed') ORDER BY id").all(t.id)
+      .map(({ updated_at, ...b }) => ({ ...b, rider: publicUser(db.prepare("SELECT * FROM users WHERE id=?").get(b.rider_id)),
+        can_rate: canRate({ ...b, updated_at }), rated: rated(b.id, user.id, b.rider_id) }));
     return { ...tripRow(t), bookings };
   });
   send(res, 200, { trips: out });

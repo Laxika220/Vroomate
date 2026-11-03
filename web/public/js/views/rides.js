@@ -1,6 +1,7 @@
 import { h, icon, toast, avatar, empty, fmtDay, fmtTime, inr } from "../ui.js";
 import { get, post } from "../api.js";
 import { registerView, nav, stopName, routeView } from "../core.js";
+import { rateSheet, shareTrip, emergencySheet } from "./safety-tools.js";
 
 const ST = { pending: ["", "Waiting for driver"], confirmed: ["good", "Confirmed"], rejected: ["bad", "Declined"], cancelled: ["bad", "Cancelled"], completed: ["", "Completed"] };
 const tag = (s, label) => h("span", { class: "tag " + (ST[s] ? ST[s][0] : "") }, label || ST[s][1]);
@@ -50,8 +51,11 @@ function bookingCard(b) {
     h("div", { class: "row" }, avatar(b.driver, "sm"), h("div", { class: "grow" }, h("b", null, b.driver.name),
       h("p", { class: "hint" }, [b.vehicle && `${b.vehicle.colour} ${b.vehicle.model}`, b.vehicle && b.vehicle.plate, plural(b.seats, "seat"), inr(b.fare_total)].filter(Boolean).join(" · ")))),
     b.status === "confirmed" && b.driver_phone && h("p", { class: "hint" }, `Phone: ${b.driver_phone}`),
-    h("div", { class: "row" },
+    b.emergency && h("button", { class: "btn small danger-fill", onclick: () => emergencySheet(b.id) }, icon("alert"), "Emergency"),
+    h("div", { class: "row wrap" },
       b.conversation_id && h("button", { class: "btn small", onclick: () => nav("/chat/" + b.conversation_id) }, "Message"),
+      b.status === "confirmed" && h("button", { class: "btn small", onclick: () => shareTrip(b.id) }, icon("share"), "Share trip"),
+      b.can_rate && !b.rated && h("button", { class: "btn small primary", onclick: async () => { if (await rateSheet(b.id, b.driver, "driver")) reload(); } }, "Rate driver"),
       live && h("button", { class: "btn small danger", onclick: act(() => post(`/api/bookings/${b.id}/cancel`), "Cancelled") }, b.status === "pending" ? "Withdraw" : "Cancel"),
       b.status === "completed" && h("button", { class: "btn small", onclick: () => nav("/report/" + b.driver.id) }, "Report")));
 }
@@ -71,14 +75,17 @@ function incomingCard(b) {
 
 /** A ride I'm driving. */
 function tripCard(t) {
-  const live = t.status === "open", riders = t.bookings.filter((b) => b.status === "confirmed");
+  const live = t.status === "open", riders = t.bookings.filter((b) => b.status === "confirmed" || b.status === "completed");
+  const underway = live && Date.now() > t.depart_at - 3600000 && Date.now() < t.depart_at + 8 * 3600000;
   return h("div", { class: "trip" },
     head(fmtDay(t.depart_at), live ? tag("", "You're driving") : tag(t.status, t.status[0].toUpperCase() + t.status.slice(1))),
     routeView(t.origin_stop, t.dest_stop, fmtTime(t.depart_at)),
     h("p", { class: "hint" }, `${t.seats_available} of ${plural(t.seats_total, "seat")} free · ${t.vehicle.colour} ${t.vehicle.model}${t.women_only ? " · Women only" : ""}`),
     riders.map((b) => h("div", { class: "row" }, avatar(b.rider, "sm"),
       h("div", { class: "grow" }, h("b", null, b.rider.name), h("p", { class: "hint" }, `${stopName(b.pickup_stop)} to ${stopName(b.drop_stop)} · ${plural(b.seats, "seat")}`)),
-      live && h("button", { class: "btn small danger", onclick: act(() => post(`/api/bookings/${b.id}/cancel`), "Passenger removed") }, "Remove"))),
+      live && h("button", { class: "btn small danger", onclick: act(() => post(`/api/bookings/${b.id}/cancel`), "Passenger removed") }, "Remove"),
+      b.can_rate && !b.rated && h("button", { class: "btn small primary", onclick: async () => { if (await rateSheet(b.id, b.rider, "rider")) reload(); } }, "Rate"))),
+    underway && h("button", { class: "btn small danger-fill", onclick: () => emergencySheet(null) }, icon("alert"), "Emergency"),
     live && h("div", { class: "row" },
       t.depart_at <= Date.now() + 15 * 60000 && h("button", { class: "btn small primary", onclick: act(() => post(`/api/trips/${t.id}/complete`), "Trip completed") }, "Mark complete"),
       h("button", { class: "btn small danger", onclick: act(() => post(`/api/trips/${t.id}/cancel`), "Ride cancelled") }, "Cancel ride")));

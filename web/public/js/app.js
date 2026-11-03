@@ -12,6 +12,7 @@ import "./views/notifications.js";
 import "./views/safety.js";
 import "./views/admin.js";
 import "./views/legal.js";
+import "./views/safety-tools.js";
 
 const root = document.getElementById("app");
 const screen = h("main", { id: "screen" });

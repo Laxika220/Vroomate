@@ -6,7 +6,8 @@ ENV NODE_ENV=production \
     PORT=3000 \
     VROOMATE_DB=/data/vroomate.db \
     VROOMATE_UPLOADS=/data/uploads \
-    VROOMATE_BACKUP_DIR=/data/backups
+    VROOMATE_BACKUP_DIR=/data/backups \
+    VROOMATE_BACKUP=1
 # Database, photos and backups live on a mounted disk so they survive redeploys.
 VOLUME /data
 EXPOSE 3000

@@ -1,4 +1,4 @@
-import { h, icon, toast, sheet, avatar, fmtDay, fmtTime, inr, empty, mount } from "../ui.js";
+import { h, icon, toast, sheet, avatar, fmtDay, fmtTime, inr, empty, mount, stars } from "../ui.js";
 import { get, post } from "../api.js";
 import { withVerifiedPhone } from "./verify.js";
 import { state, registerView, nav, stopById, stopName, routeView } from "../core.js";
@@ -36,7 +36,7 @@ function rideCard(r) {
   const t = r.trip;
   return [photo(r.driver), h("div", { class: "shade" }), h("span", { class: "price-tag mono" }, inr(r.fare_per_seat)),
     h("div", { class: "info" },
-      h("h2", null, r.driver.name.split(" ")[0], h("span", null, `${r.vehicle.colour} ${r.vehicle.model}`)),
+      h("h2", null, r.driver.name.split(" ")[0], h("span", null, `${stars(r.driver)} · ${r.vehicle.colour} ${r.vehicle.model}`)),
       h("p", { class: "leg" }, `${stopName(r.pickup)} → ${stopName(r.drop)}`),
       h("p", null, `${fmtDay(r.pickup_eta)} · ${fmtTime(r.pickup_eta)} · ${plural(t.seats_available, "seat")} left${t.women_only ? " · Women only" : ""}`),
       t.notes && h("p", { class: "note" }, t.notes))];
@@ -55,7 +55,7 @@ function personCard(b) {
 function rideRow(r, onPick) {
   return h("button", { class: "ritem", onclick: onPick },
     h("div", { class: "when mono" }, h("b", null, fmtTime(r.pickup_eta)), h("span", null, fmtDay(r.pickup_eta))),
-    h("div", { class: "t" }, h("b", null, `${stopName(r.pickup)} → ${stopName(r.drop)}`), h("span", null, `${r.driver.name} · ${r.vehicle.colour} ${r.vehicle.model} · ${r.trip.seats_available} left`)),
+    h("div", { class: "t" }, h("b", null, `${stopName(r.pickup)} → ${stopName(r.drop)}`), h("span", null, `${r.driver.name} · ${stars(r.driver)} · ${r.vehicle.colour} ${r.vehicle.model} · ${r.trip.seats_available} left`)),
     h("b", { class: "mono" }, inr(r.fare_per_seat)));
 }
 function personRow(b, onConnect) {

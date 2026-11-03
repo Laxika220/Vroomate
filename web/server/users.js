@@ -20,11 +20,17 @@ function isBlocked(a, b) {
   return !!db.prepare("SELECT 1 FROM blocks WHERE (blocker_id=? AND blocked_id=?) OR (blocker_id=? AND blocked_id=?)").get(a, b, b, a);
 }
 
+/** Average stars (one decimal) and how many ratings it's based on. */
+function rating(id) {
+  const r = db.prepare("SELECT ROUND(AVG(stars), 1) avg, COUNT(*) n FROM ratings WHERE ratee_id=?").get(id);
+  return { rating: r.n ? r.avg : null, rating_count: r.n };
+}
+
 /** Fields safe to show other people. Never email, phone or password. */
 function publicUser(u) {
   return {
     id: u.id, name: u.name, role: u.role, gender: u.gender, bio: u.bio, home_stop: u.home_stop,
-    photo: u.photo ? `/uploads/${u.photo}` : null,
+    photo: u.photo ? `/uploads/${u.photo}` : null, ...rating(u.id),
   };
 }
 function selfUser(u) {

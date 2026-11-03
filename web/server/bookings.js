@@ -7,6 +7,7 @@ const { feasible, genderOk } = require("./matching");
 const { route, bad, forbidden, notFound, conflict, send } = require("./http");
 const { publicUser, isBlocked, requireVerifiedPhone } = require("./users");
 const { fulfilRequests, reopenRequests } = require("./fulfil");
+const { rated, canRate } = require("./ratings");
 
 const stopLabel = (id) => (cfg.stop(id) ? cfg.stop(id).short : id);
 const legText = (t) => `${stopLabel(t.origin_stop)} to ${stopLabel(t.dest_stop)}`;
@@ -121,6 +122,8 @@ route("GET", "/api/bookings/mine", ({ res, user }) => {
       vehicle: v ? { ...v, plate: confirmed ? v.plate : undefined } : null,
       companions: b.group_id ? joinedMembers(b.group_id).filter((x) => x !== user.id).map((x) => publicUser(db.prepare("SELECT * FROM users WHERE id=?").get(x))) : [],
       conversation_id: conv ? conv.id : null,
+      can_rate: canRate(b), rated: rated(b.id, user.id, t.driver_id),
+      emergency: b.status === "confirmed" && Date.now() > t.depart_at - 3600000 && Date.now() < t.depart_at + 8 * 3600000,
     };
   });
   send(res, 200, { bookings: out });

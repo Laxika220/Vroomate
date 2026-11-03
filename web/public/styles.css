@@ -193,3 +193,11 @@ a.tab,a.btn,a.iconbtn{text-decoration:none}
 .prose{display:flex;flex-direction:column;gap:12px;max-width:640px;font-size:15px;line-height:1.55}
 .prose h2{margin-top:12px;font-size:17px}
 .prose ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+
+/* ratings and emergency */
+.btn.danger-fill{background:var(--bad);color:#fff;border-color:var(--bad)}
+.stars-pick{display:flex;gap:8px;justify-content:center;padding:8px 0}
+.starbtn{width:48px;height:48px;display:grid;place-items:center;color:var(--line)}
+.starbtn svg{width:36px;height:36px}
+.starbtn[aria-pressed="true"]{color:#e0a100}
+.starbtn[aria-pressed="true"] svg{fill:currentColor}
